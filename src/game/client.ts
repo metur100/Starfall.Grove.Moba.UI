@@ -162,6 +162,27 @@ export class MatchClient {
     p.y = Math.max(50, Math.min(this.map.h - 50, p.y));
   }
 
+  /** Whether nothing blocks the straight line between two points, as the server decides it: stones, pillars and tree
+   *  trunks block sight (pools don't). */
+  sees(ax: number, ay: number, bx: number, by: number) {
+    const dx = bx - ax, dy = by - ay, lenSq = dx * dx + dy * dy;
+    if (lenSq < 1) return true;
+    const steps = Math.floor(Math.sqrt(lenSq) / 120) + 1;
+    for (let i = 0; i <= steps; i++) {
+      const px = ax + dx * i / steps, py = ay + dy * i / steps;
+      const cx = Math.floor(px / 160), cy = Math.floor(py / 160);
+      for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) {
+        for (const o of this.grid.get(`${gx},${gy}`) || []) {
+          if (o.k === 'pool') continue;
+          const r = o.r * .7, k = Math.max(0, Math.min(1, ((o.x - ax) * dx + (o.y - ay) * dy) / lenSq));
+          const qx = ax + dx * k - o.x, qy = ay + dy * k - o.y;
+          if (qx * qx + qy * qy < r * r) return false;
+        }
+      }
+    }
+    return true;
+  }
+
   takeFx() { return this.fx.splice(0); }
   hero(uid: number) { return this.heroes.get(uid); }
   myUnit() { return this.units.get(this.me?.u ?? -1); }

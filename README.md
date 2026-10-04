@@ -39,7 +39,10 @@ set *Pages → Source* to **GitHub Actions** once.
 | Attack | Space or hold left mouse; standing still attacks too | Big button (hold) |
 | Abilities | Q, E, R, F (or 1–4), aimed at the mouse | Tap = best target in range; drag = aim yourself |
 | Spellbook | B | Gold button |
-| Scoreboard | Tab | ☰ |
+| Scoreboard (kills, damage to heroes, healing) | Tab | ☰ |
+
+Phones are played sideways: held upright, the game asks you to turn the phone, and on Android it goes fullscreen.
+Every screen fits the window without scrolling (`src/ui/Fit.tsx` scales a screen down when it has to).
 
 ## Code map
 
@@ -53,3 +56,4 @@ set *Pages → Source* to **GitHub Actions** once.
 | `src/game/heroes.ts` | How each hero is presented (quotes, descriptions, icons). Numbers come from the server. |
 | `src/game/art/` | The paper-cutout art from Starfall Grove (heroes, scenery and its creatures, used for minions and monsters), plus Elara. |
 | `src/screens/` | Main menu, lobby, hero select, match view with the HUD. |
+| `src/ui/` | Shared pieces: `Fit` (screens that fit any window) and the hero stage. |

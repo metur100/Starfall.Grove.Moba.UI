@@ -860,6 +860,7 @@ export class Renderer {
       case 'howl': this.puff(x, y - 10, 14, '#9fe8b0', 'smoke'); break;
       case 'barkskin': ring('#c8a46a', 4, false, .4); this.puff(x, y - 20, 12, '#8fae6a', 'leaf'); break;
       case 'bloomcall': break;
+      case 'thud': this.puff(x, y - 14, 6, '#b8ab98', 'smoke'); this.puff(x, y - 14, 5, '#8c8478', 'shard'); break;
       case 'bloom': ring('#9fe8b0', 8, true, .7); this.puff(x, y, 40, '#f7c5d5', 'leaf'); this.puff(x, y, 24, '#b9e27a', 'leaf'); this.puff(x, y, 10, '#fff2a1', 'star'); break;
       case 'shellbreak': this.puff(x, y - 30, 16, '#d6f4ff', 'shard'); sfx.play('reflect', { x, y }); break;
       case 'warden': ring('#c9b6ff', 6, true, .4); this.puff(x, y, 10, '#a78bfa', 'star'); sfx.play('slam', { x, y }, .6); break;

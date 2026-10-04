@@ -32,7 +32,8 @@ export type UnitSnap = { i: number; k: string; tm: number; x: number; y: number;
 export type ProjSnap = { i: number; k: string; x: number; y: number; vx: number; vy: number; tm: number };
 export type ZoneSnap = { i: number; k: string; x: number; y: number; r: number; tm: number; t: number };
 export type Fx = { e: string; u?: number; u2?: number; x?: number; y?: number; x2?: number; y2?: number; v?: number; r?: number; k?: string; tm?: number };
-export type PlayerStat = { id: string; u: number; k: number; d: number; a: number; lv: number; rs: number };
+/** dm: damage dealt to enemy heroes, hl: healing given to allies. */
+export type PlayerStat = { id: string; u: number; k: number; d: number; a: number; lv: number; rs: number; dm: number; hl: number };
 export type Snapshot = {
   t: number; u: UnitSnap[]; p: ProjSnap[]; z: ZoneSnap[]; fx: Fx[]; sc: [number, number]; ps: PlayerStat[];
   pa: number; ob: number; sd: number; fv: number;
@@ -52,5 +53,5 @@ export type MapData = {
 };
 export type MatchHero = { playerId: string; name: string; hero: string; team: number; u: number; bot: boolean };
 export type MatchInit = { map: MapData; heroes: MatchHero[]; you: string; team: number; tick: number };
-export type MatchEndPlayer = { id: string; name: string; hero: string; team: number; k: number; d: number; a: number; lv: number; gold: number; damage: number; healing: number; bot: boolean };
+export type MatchEndPlayer = { id: string; name: string; hero: string; team: number; k: number; d: number; a: number; lv: number; gold: number; damage: number; healing: number; bot: boolean; heroDamage: number };
 export type MatchEnd = { winner: number; duration: number; players: MatchEndPlayer[] };

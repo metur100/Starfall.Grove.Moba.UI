@@ -9,11 +9,13 @@ import { HEROES, isHero } from '../game/heroes';
 import { heroBust } from '../game/art/bust';
 import { sfx } from '../game/audio';
 import type { HeroId } from '../game/types';
+import { Fit } from '../ui/Fit';
 
 type Props = { state: GameState; client: MatchClient; room: RoomView | null; result: MatchEnd | null; catalog: Catalog; onLoaded: () => void; onLeave: () => void; onLobby: () => void };
 type Feed = { id: number; text: string; tone: 'ally' | 'enemy' | 'neutral'; at: number };
 
 const TEAM_NAME = ['Neutral', 'Blue', 'Red'];
+const fmtK = (n: number) => n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -42,7 +44,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
     inputRef.current = input;
     input.attach(canvas);
     input.onError = e => {
-      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!', wait: 'Wait for the round to start' };
+      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!', wait: 'Wait for the round to start', sight: 'Not in sight — something is in the way' };
       if (words[e]) { setToast({ text: words[e], at: performance.now() }); sfx.play('nope'); }
     };
     input.onUpgradeKey = () => setBook(b => !b);
@@ -103,7 +105,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
       }
       case 'lvl': if (f.u === client.me?.u && f.v === catalog.ultLevel && !duel) say(`Ultimate unlocked: ${def.abilities[4].name}!`, 'good'); break;
       case 'round':
-        if (f.k === 'start') say(`Round ${f.v}`, 'info');
+        if (f.k === 'start') say(f.v && f.v > 1 ? `Round ${f.v} · everyone grows a level` : `Round ${f.v}`, 'info');
         else if (f.k === 'fight') { say('Fight!', 'good'); }
         else if (f.k === 'won') { say(f.tm === team ? 'You win the round!' : 'Round lost', f.tm === team ? 'good' : 'bad'); sfx.play(f.tm === team ? 'questDone' : 'nope'); push(`${TEAM_NAME[f.tm ?? 0]} won round ${f.v}`, f.tm === team ? 'ally' : 'enemy'); }
         else if (f.k === 'draw') say('Both sides fell: a draw!', 'info');
@@ -125,6 +127,16 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
   };
   const anyBuy = [0, 1, 2, 3, 4].some(canBuy);
   const now = performance.now();
+
+  // Duels: open the Spellbook by itself while the fighting is paused (before a round, and between rounds), and close it
+  // again when the round starts if it opened by itself.
+  const phase = duel && state === 'PLAYING' ? snap?.rp ?? -1 : -1;
+  const autoBook = useRef(false);
+  useEffect(() => {
+    if ((phase === 0 || phase === 2) && anyBuy && !book) { autoBook.current = true; setBook(true); }
+    if (phase === 1 && autoBook.current) { autoBook.current = false; setBook(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   return (
     <div className="match">
@@ -188,14 +200,15 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
 
       {dead && state === 'PLAYING' && !duel && <div className="respawn"><b>Respawning in {Math.ceil(me?.rs ?? 0)}</b><small>Spend your gold on upgrades while you wait.</small></div>}
       {dead && state === 'PLAYING' && duel && snap?.rp === 1 && <div className="respawn"><b>Knocked out</b><small>Cheer on your team — you're back next round.</small></div>}
-      {duel && state === 'PLAYING' && snap?.rp === 0 && (
+      {duel && state === 'PLAYING' && snap?.rp === 0 && !book && (
         <div className="overlay countdown round">
           <small>Round {snap.rd} · <span style={{ color: TEAM_COLOR[mine] }}>{snap.rw[mine - 1]}</span> – <span style={{ color: TEAM_COLOR[theirs] }}>{snap.rw[theirs - 1]}</span></small>
           <b key={Math.ceil(snap.rt)}>{Math.max(1, Math.ceil(snap.rt))}</b>
           <p>Get ready!</p>
         </div>
       )}
-      {book && me && <UpgradeBook def={def} me={me} catalog={catalog} onClose={() => setBook(false)} />}
+      {book && me && <UpgradeBook def={def} me={me} catalog={catalog} onClose={() => setBook(false)}
+        note={duel && snap && snap.rp !== 1 && state === 'PLAYING' ? `${snap.rp === 0 ? 'Round starts' : 'Next round'} in ${Math.ceil(snap.rt)}s` : undefined} />}
       {board && <Scoreboard client={client} onClose={() => setBoard(false)} />}
 
       {state === 'LOADING' && (
@@ -311,7 +324,7 @@ function Joystick({ input }: { input: React.RefObject<Input | null> }) {
 
 // ───────────────────────────── upgrade book
 
-function UpgradeBook({ def, me, catalog, onClose }: { def: HeroDef; me: NonNullable<MatchClient['me']>; catalog: Catalog; onClose: () => void }) {
+function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: NonNullable<MatchClient['me']>; catalog: Catalog; note?: string; onClose: () => void }) {
   const look = HEROES[def.id as HeroId];
   const [err, setErr] = useState('');
   const buy = async (slot: number, choice: number) => {
@@ -320,49 +333,51 @@ function UpgradeBook({ def, me, catalog, onClose }: { def: HeroDef; me: NonNulla
     else { setErr(''); sfx.play('learn'); }
   };
   return (
-    <div className="book-wrap" onClick={onClose}>
-      <div className="book parchment" onClick={e => e.stopPropagation()}>
-        <header><h3>Spellbook</h3><span className="gold">◉ {me.g} gold</span><button className="close" onClick={onClose}>✕</button></header>
-        <p className="book-hint">Each ability has three upgrades. At every step, choose one of two paths — your build is your choices.</p>
-        {err && <p className="book-err">{err}</p>}
-        <div className="book-rows">
-          {def.abilities.map((a, slot) => {
-            const tiers = slot === 0 ? catalog.basicTiers : catalog.abilityTiers;
-            const costs = slot === 0 ? catalog.basicCost : slot === 4 ? catalog.ultCost : catalog.abilityCost;
-            const picks = me.up[slot] ?? [];
-            const locked = slot === 4 && me.lv < catalog.ultLevel;
-            const l = look.abilities[a.id];
-            return (
-              <div key={slot} className="book-row">
-                <div className="book-ability" style={{ ['--c' as string]: l?.color }}>
-                  <span className="ab-icon">{l?.icon}</span>
-                  <div><b>{a.name}</b><small>{KEY_LABELS[slot]}{slot === 4 ? ' · Ultimate' : slot === 0 ? ' · Basic attack' : ''}</small></div>
+    <div className="book-wrap">
+      <Fit onBackdrop={onClose}>
+        <div className="book parchment">
+          <header>
+            <h3>Spellbook</h3>
+            {note && <span className="book-note">{note}</span>}
+            <span className="gold">◉ {me.g}</span>
+            <button className="close" onClick={onClose}>✕</button>
+          </header>
+          <p className="book-hint">{err ? <b className="book-err">{err}</b> : 'Every ability has three steps; at each, choose one of two paths.'}</p>
+          <div className="book-rows">
+            {def.abilities.map((a, slot) => {
+              const tiers = slot === 0 ? catalog.basicTiers : catalog.abilityTiers;
+              const costs = slot === 0 ? catalog.basicCost : slot === 4 ? catalog.ultCost : catalog.abilityCost;
+              const picks = me.up[slot] ?? [];
+              const tier = picks.length;
+              const locked = slot === 4 && me.lv < catalog.ultLevel;
+              const l = look.abilities[a.id];
+              return (
+                <div key={slot} className="book-row">
+                  <div className="book-ability" style={{ ['--c' as string]: l?.color }}>
+                    <span className="ab-icon">{l?.icon}</span>
+                    <div><b>{a.name}</b><small>{KEY_LABELS[slot]}{slot === 4 ? ' · Ultimate' : slot === 0 ? ' · Attack' : ''}</small></div>
+                  </div>
+                  <div className="book-picks">
+                    {[0, 1, 2].map(t => {
+                      const o = tiers[t]?.find(x => x.id === picks[t]);
+                      return <span key={t} className={`chip ${o ? 'done' : ''}`} title={o?.text}>{o ? o.name : '·'}</span>;
+                    })}
+                  </div>
+                  <div className="book-next">
+                    {tier >= tiers.length ? <span className="book-done">★ Mastered</span>
+                      : locked ? <span className="book-done">Unlocks at level {catalog.ultLevel}</span>
+                      : tiers[tier].map((o, choice) => (
+                        <button key={o.id} className={`opt ${me.g >= costs[tier] ? 'can' : ''}`} onClick={() => buy(slot, choice)}>
+                          <b>{o.name} <em>{costs[tier]}g</em></b><small>{o.text}</small>
+                        </button>
+                      ))}
+                  </div>
                 </div>
-                <div className="book-tiers">
-                  {tiers.map((opts, tier) => {
-                    const bought = picks[tier];
-                    const next = tier === picks.length;
-                    return (
-                      <div key={tier} className={`tier ${bought ? 'done' : next ? 'next' : 'later'}`}>
-                        {opts.map((o, choice) => {
-                          const chosen = bought === o.id;
-                          const can = next && !locked && me.g >= costs[tier];
-                          return (
-                            <button key={o.id} className={`opt ${chosen ? 'chosen' : ''} ${bought && !chosen ? 'skipped' : ''}`} disabled={!next || locked} onClick={() => buy(slot, choice)}>
-                              <b>{o.name}</b><small>{o.text}</small>
-                              {next && <em className={can ? 'ok' : ''}>{costs[tier]}g</em>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </Fit>
     </div>
   );
 }
@@ -372,25 +387,27 @@ function UpgradeBook({ def, me, catalog, onClose }: { def: HeroDef; me: NonNulla
 function Scoreboard({ client, onClose }: { client: MatchClient; onClose: () => void }) {
   const ps = client.latest?.ps ?? [];
   return (
-    <div className="board-wrap" onClick={onClose}>
-      <div className="board parchment">
-        {[1, 2].map(team => (
-          <table key={team} className={`t${team}`}>
-            <thead><tr><th>{TEAM_NAME[team]}</th><th>Lv</th><th>K</th><th>D</th><th>A</th></tr></thead>
-            <tbody>
-              {client.init.heroes.filter(h => h.team === team).map(h => {
-                const s = ps.find(p => p.id === h.playerId);
-                return (
-                  <tr key={h.playerId} className={h.playerId === client.init.you ? 'me' : ''}>
-                    <td><img src={heroBust(h.hero as HeroId)} alt="" /> {h.name}{s && s.rs > 0 ? <em> ({s.rs}s)</em> : null}</td>
-                    <td>{s?.lv ?? 1}</td><td>{s?.k ?? 0}</td><td>{s?.d ?? 0}</td><td>{s?.a ?? 0}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ))}
-      </div>
+    <div className="board-wrap">
+      <Fit onBackdrop={onClose}>
+        <div className="board parchment" onClick={onClose}>
+          {[1, 2].map(team => (
+            <table key={team} className={`t${team}`}>
+              <thead><tr><th>{TEAM_NAME[team]}</th><th>Lv</th><th>K</th><th>D</th><th>A</th><th title="Damage dealt to enemy heroes">Dmg</th><th title="Healing given to allies">Heal</th></tr></thead>
+              <tbody>
+                {client.init.heroes.filter(h => h.team === team).map(h => {
+                  const s = ps.find(p => p.id === h.playerId);
+                  return (
+                    <tr key={h.playerId} className={h.playerId === client.init.you ? 'me' : ''}>
+                      <td><img src={heroBust(h.hero as HeroId)} alt="" /> {h.name}{s && s.rs > 0 ? <em> ({s.rs}s)</em> : null}</td>
+                      <td>{s?.lv ?? 1}</td><td>{s?.k ?? 0}</td><td>{s?.d ?? 0}</td><td>{s?.a ?? 0}</td><td className="num">{fmtK(s?.dm ?? 0)}</td><td className="num">{fmtK(s?.hl ?? 0)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ))}
+        </div>
+      </Fit>
     </div>
   );
 }
@@ -398,29 +415,33 @@ function Scoreboard({ client, onClose }: { client: MatchClient; onClose: () => v
 function Result({ state, result, client, onLobby, onLeave }: { state: GameState; result: MatchEnd; client: MatchClient; onLobby: () => void; onLeave: () => void }) {
   const win = state === 'VICTORY';
   useEffect(() => { sfx.play(win ? 'victory' : 'bossDie'); }, [win]);
-  const best = [...result.players].sort((a, b) => (b.k * 3 + b.a + b.damage / 2000) - (a.k * 3 + a.a + a.damage / 2000))[0];
+  const best = [...result.players].sort((a, b) => (b.k * 3 + b.a + (b.heroDamage ?? 0) / 1000) - (a.k * 3 + a.a + (a.heroDamage ?? 0) / 1000))[0];
   return (
     <div className={`overlay result ${win ? 'win' : 'lose'}`}>
-      <h1>{win ? 'Victory' : 'Defeat'}</h1>
-      <p>{TEAM_NAME[result.winner]} team {client.map.type === 'duel' ? 'won the duel' : 'destroyed the enemy Core'} in {fmtTime(result.duration)}</p>
-      <div className="result-table parchment">
-        <table>
-          <thead><tr><th>Player</th><th>Hero</th><th>Lv</th><th>K / D / A</th><th>Damage</th><th>Healing</th></tr></thead>
-          <tbody>
-            {[...result.players].sort((a, b) => a.team - b.team).map(p => (
-              <tr key={p.id} className={`t${p.team} ${p.id === client.init.you ? 'me' : ''}`}>
-                <td>{p.id === best?.id ? '★ ' : ''}{p.name}</td>
-                <td>{isHero(p.hero) ? <img src={heroBust(p.hero)} alt="" /> : null}</td>
-                <td>{p.lv}</td><td>{p.k} / {p.d} / {p.a}</td><td>{p.damage.toLocaleString()}</td><td>{p.healing.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="result-actions">
-        <button className="btn primary" onClick={onLobby}>Back to the lobby <b>→</b></button>
-        <button className="btn ghost" onClick={onLeave}>Main menu</button>
-      </div>
+      <Fit>
+        <div className="result-body">
+          <h1>{win ? 'Victory' : 'Defeat'}</h1>
+          <p>{TEAM_NAME[result.winner]} team {client.map.type === 'duel' ? 'won the duel' : 'destroyed the enemy Core'} in {fmtTime(result.duration)}</p>
+          <div className="result-table parchment">
+            <table>
+              <thead><tr><th>Player</th><th>Hero</th><th>Lv</th><th>K / D / A</th><th title="Damage dealt to enemy heroes">Hero dmg</th><th title="All damage dealt">Total dmg</th><th>Healing</th></tr></thead>
+              <tbody>
+                {[...result.players].sort((a, b) => a.team - b.team).map(p => (
+                  <tr key={p.id} className={`t${p.team} ${p.id === client.init.you ? 'me' : ''}`}>
+                    <td>{p.id === best?.id ? '★ ' : ''}{p.name}</td>
+                    <td>{isHero(p.hero) ? <img src={heroBust(p.hero)} alt="" /> : null}</td>
+                    <td>{p.lv}</td><td>{p.k} / {p.d} / {p.a}</td><td>{(p.heroDamage ?? 0).toLocaleString()}</td><td>{p.damage.toLocaleString()}</td><td>{p.healing.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="result-actions">
+            <button className="btn primary" onClick={onLobby}>Back to the lobby <b>→</b></button>
+            <button className="btn ghost" onClick={onLeave}>Main menu</button>
+          </div>
+        </div>
+      </Fit>
     </div>
   );
 }

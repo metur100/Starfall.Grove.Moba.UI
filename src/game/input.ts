@@ -140,7 +140,9 @@ export class Input {
       if ((u.k === 'tower' || u.k === 'core') && d.target === 'enemy') continue;
       const dist = Math.hypot(u.rx - me.rx, u.ry - me.ry);
       if (dist > range + 60) continue;
-      const s = dist + (isHero(u.k) ? -1000 : u.k === 'tower' || u.k === 'core' ? 500 : 0);
+      // Prefer what we can see: a stone in between blocks the spell.
+      const hidden = u.k !== 'tower' && u.k !== 'core' && !C.sees(me.rx, me.ry, u.rx, u.ry);
+      const s = dist + (isHero(u.k) ? -1000 : u.k === 'tower' || u.k === 'core' ? 500 : 0) + (hidden ? 5000 : 0);
       if (s < bestScore) { bestScore = s; best = { x: u.rx, y: u.ry }; }
     }
     if (!best) {

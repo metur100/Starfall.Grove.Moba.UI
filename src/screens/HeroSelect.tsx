@@ -6,6 +6,7 @@ import { heroBust } from '../game/art/bust';
 import { HeroStage } from '../ui/HeroStage';
 import { KEY_LABELS } from '../game/input';
 import { sfx } from '../game/audio';
+import { Fit } from '../ui/Fit';
 import type { HeroId } from '../game/types';
 
 type Props = { room: RoomView; catalog: Catalog };
@@ -24,82 +25,80 @@ export function HeroSelect({ room, catalog }: Props) {
   const lock = async () => { const e = await net.pickHero(sel, true); setErr(e || ''); if (!e) sfx.play('learn'); };
 
   return (
-    <div className="select">
-      <header className="select-head">
-        <h2>Choose your hero</h2>
-        <div className={`timer card ${room.timer <= 10 ? 'hurry' : ''}`}>{room.timer}s</div>
-      </header>
-      <div className="select-body">
-        <div className="hero-grid">
-          {HERO_ORDER.map(id => {
-            const h = catalog.heroes.find(x => x.id === id)!;
-            const taken = takenByTeam.has(id);
-            return (
-              <button key={id} disabled={me.locked || taken} className={`hero-card ${sel === id ? 'on' : ''} ${taken ? 'taken' : ''}`} style={{ ['--hc' as string]: HEROES[id].color }} onClick={() => { setSel(id); sfx.play('page'); }}>
-                <img src={heroBust(id)} alt="" />
-                <b>{h.name}</b>
-                <small>{ROLE_ICON[h.role]} {h.role}</small>
-                {taken && <em>Taken</em>}
-              </button>
-            );
-          })}
-        </div>
-
-        <article className="hero-detail parchment">
-          <div className="hero-detail-top">
-            <HeroStage hero={sel} size={190} />
-            <div>
-              <h1>{def.name}</h1>
-              <h4>{def.title}</h4>
-              <blockquote>“{look.quote}”</blockquote>
-              <div className="facts">
-                <span><small>Role</small>{ROLE_ICON[def.role]} {def.role}</span>
-                <span><small>Difficulty</small><i className="stars">{'★'.repeat(def.difficulty)}{'☆'.repeat(5 - def.difficulty)}</i></span>
-              </div>
-            </div>
-          </div>
-          <p className="blurb">{look.blurb}</p>
-          <div className="stat-bars">
-            {(Object.keys(BAR_NAMES) as Array<keyof typeof BAR_NAMES>).map(k => (
-              <div key={k} className="stat"><small>{BAR_NAMES[k]}</small><div className="pips">{[1, 2, 3, 4, 5].map(i => <i key={i} className={i <= look.bars[k] ? 'on' : ''} />)}</div></div>
-            ))}
-            <div className="stat nums"><small>Health {def.hp} · {def.resource} {def.mana} · Speed {def.speed} · Range {def.abilities[0].range}</small></div>
-          </div>
-          <ul className="ability-list">
-            {def.abilities.map((a, slot) => {
-              const l = look.abilities[a.id];
+    <Fit className="screen">
+      <div className="select">
+        <h2 className="select-title">Choose your hero</h2>
+        <div className="select-body">
+          <div className="hero-grid">
+            {HERO_ORDER.map(id => {
+              const h = catalog.heroes.find(x => x.id === id)!;
+              const taken = takenByTeam.has(id);
               return (
-                <li key={a.id} style={{ ['--c' as string]: l?.color }}>
-                  <span className="ab-icon">{l?.icon}</span>
-                  <div>
-                    <b>{a.name} <kbd>{KEY_LABELS[slot]}</kbd>{slot === 4 && <em> Ultimate · level {catalog.ultLevel}</em>}{slot === 0 && <em> Basic attack</em>}</b>
-                    <p>{l?.text}</p>
-                    {slot > 0 && <small>{a.cooldown}s cooldown · {a.cost} {def.resource.toLowerCase()}{a.range ? ` · range ${a.range}` : ''}</small>}
-                  </div>
-                </li>
+                <button key={id} disabled={me.locked || taken} className={`hero-card ${sel === id ? 'on' : ''} ${taken ? 'taken' : ''}`} style={{ ['--hc' as string]: HEROES[id].color }} onClick={() => { setSel(id); sfx.play('page'); }}>
+                  <img src={heroBust(id)} alt="" />
+                  <b>{h.name}</b>
+                  <small>{ROLE_ICON[h.role]} {h.role}</small>
+                  {taken && <em>Taken</em>}
+                </button>
               );
             })}
-          </ul>
-        </article>
+          </div>
 
-        <aside className="select-team">
-          {[1, 2].map(team => (
-            <div key={team} className={`pick-col t${team}`}>
-              <h4>{team === me.team ? 'Your team' : 'Enemy team'}</h4>
-              {room.players.filter(p => p.team === team).map(p => (
-                <div key={p.id} className={`pick ${p.locked ? 'locked' : ''} ${p.id === me.id ? 'me' : ''}`}>
-                  {p.hero ? <img src={heroBust(p.hero as HeroId)} alt="" /> : <span className="q">?</span>}
-                  <div><b>{p.name}</b><small>{p.hero ? catalog.heroes.find(h => h.id === p.hero)?.name : 'choosing…'}{p.locked ? ' ✓' : ''}</small></div>
+          <article className="hero-detail parchment">
+            <div className="hero-detail-top">
+              <HeroStage hero={sel} size={150} />
+              <div>
+                <h1>{def.name}</h1>
+                <h4>{def.title}</h4>
+                <blockquote>“{look.quote}”</blockquote>
+                <div className="facts">
+                  <span><small>Role</small>{ROLE_ICON[def.role]} {def.role}</span>
+                  <span><small>Difficulty</small><i className="stars">{'★'.repeat(def.difficulty)}{'☆'.repeat(5 - def.difficulty)}</i></span>
                 </div>
-              ))}
+              </div>
             </div>
-          ))}
-        </aside>
+            <p className="blurb">{look.blurb}</p>
+            <div className="stat-bars">
+              {(Object.keys(BAR_NAMES) as Array<keyof typeof BAR_NAMES>).map(k => (
+                <div key={k} className="stat"><small>{BAR_NAMES[k]}</small><div className="pips">{[1, 2, 3, 4, 5].map(i => <i key={i} className={i <= look.bars[k] ? 'on' : ''} />)}</div></div>
+              ))}
+              <div className="stat nums"><small>Health {def.hp} · {def.resource} {def.mana} · Speed {def.speed} · Range {def.abilities[0].range}</small></div>
+            </div>
+            <ul className="ability-list">
+              {def.abilities.map((a, slot) => {
+                const l = look.abilities[a.id];
+                return (
+                  <li key={a.id} style={{ ['--c' as string]: l?.color }}>
+                    <span className="ab-icon">{l?.icon}</span>
+                    <div>
+                      <b>{a.name} <kbd>{KEY_LABELS[slot]}</kbd>{slot === 4 && <em> Ultimate · level {catalog.ultLevel}</em>}{slot === 0 && <em> Basic attack</em>}</b>
+                      <p>{l?.text}</p>
+                      {slot > 0 && <small>{a.cooldown}s cooldown · {a.cost} {def.resource.toLowerCase()}{a.range ? ` · range ${a.range}` : ''}</small>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </article>
+
+          <aside className="select-team">
+            <div className={`timer card ${room.timer <= 10 ? 'hurry' : ''}`}>{room.timer}s</div>
+            {[1, 2].map(team => (
+              <div key={team} className={`pick-col t${team}`}>
+                <h4>{team === me.team ? 'Your team' : 'Enemy team'}</h4>
+                {room.players.filter(p => p.team === team).map(p => (
+                  <div key={p.id} className={`pick ${p.locked ? 'locked' : ''} ${p.id === me.id ? 'me' : ''}`}>
+                    {p.hero ? <img src={heroBust(p.hero as HeroId)} alt="" /> : <span className="q">?</span>}
+                    <div><b>{p.name}</b><small>{p.hero ? catalog.heroes.find(h => h.id === p.hero)?.name : 'choosing…'}{p.locked ? ' ✓' : ''}</small></div>
+                  </div>
+                ))}
+              </div>
+            ))}
+            {err && <span className="err">{err}</span>}
+            <button className="btn primary big lock" disabled={me.locked || takenByTeam.has(sel)} onClick={lock}>{me.locked ? `Locked in` : `Lock in ${def.name}`} <b>✓</b></button>
+          </aside>
+        </div>
       </div>
-      <footer className="select-foot">
-        {err && <span className="err">{err}</span>}
-        <button className="btn primary big" disabled={me.locked || takenByTeam.has(sel)} onClick={lock}>{me.locked ? `Locked in: ${def.name}` : `Lock in ${def.name}`} <b>✓</b></button>
-      </footer>
-    </div>
+    </Fit>
   );
 }

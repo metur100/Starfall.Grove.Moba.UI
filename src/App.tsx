@@ -11,6 +11,16 @@ import { MatchView } from './screens/MatchView';
 
 const MATCH_STATES: GameState[] = ['LOADING', 'MATCH_START', 'PLAYING', 'VICTORY', 'DEFEAT'];
 
+/** On phones and tablets, use the whole screen (no browser bars) and hold it sideways, where the game is laid out.
+ *  Browsers only allow this after a tap, and some (iPhone Safari) not at all; then the page still fits the screen. */
+function goFullscreen() {
+  if (!matchMedia('(pointer: coarse)').matches || document.fullscreenElement) return;
+  const el = document.documentElement;
+  el.requestFullscreen?.({ navigationUI: 'hide' })
+    .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+    .catch(() => { /* not allowed here */ });
+}
+
 export default function App() {
   const [state, setState] = useState<GameState>('MAIN_MENU');
   const stateRef = useRef(state);
@@ -73,7 +83,7 @@ export default function App() {
   }, [follow, go]);
 
   useEffect(() => {
-    const unlock = () => sfx.unlock();
+    const unlock = () => { sfx.unlock(); goFullscreen(); };
     window.addEventListener('pointerdown', unlock, { once: true });
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
@@ -98,6 +108,7 @@ export default function App() {
           onLoaded={() => void net.loaded()} onLeave={leave} onLobby={() => void net.backToLobby()}
         />
       )}
+      <div className="rotate-hint"><b>⟳</b><p>Turn your phone sideways to play</p></div>
       {state === 'DISCONNECTED' && (
         <div className="overlay disconnected">
           <h2>{status === 'reconnecting' || status === 'connecting' ? 'Reconnecting…' : 'Connection lost'}</h2>
