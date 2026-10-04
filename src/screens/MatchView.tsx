@@ -31,6 +31,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
   const [ready, setReady] = useState(false);
   const myHero = client.init.heroes.find(h => h.playerId === client.init.you)!;
   const def: HeroDef = useMemo(() => catalog.heroes.find(h => h.id === myHero.hero)!, [catalog, myHero.hero]);
+  const duel = client.map.type === 'duel';
 
   // Set up the renderer and input once; bake the battlefield, then tell the server we're ready.
   useEffect(() => {
@@ -41,7 +42,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
     inputRef.current = input;
     input.attach(canvas);
     input.onError = e => {
-      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!' };
+      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!', wait: 'Wait for the round to start' };
       if (words[e]) { setToast({ text: words[e], at: performance.now() }); sfx.play('nope'); }
     };
     input.onUpgradeKey = () => setBook(b => !b);
@@ -95,15 +96,23 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
           blessed: f.tm === team ? 'Your team is blessed by the Star Warden!' : 'The enemy is blessed by the Star Warden',
           sudden1: `Sudden death — structures crumble faster. ${fav} the Star’s favour`, sudden2: `The Star blazes — ${fav.toLowerCase()} its favour`,
           sudden3: 'Every defence falls silent: all structures can be attacked!',
+          ring: 'The ring of starfire is closing in!',
         };
         if (f.k && words[f.k]) say(words[f.k], f.k === 'blessed' ? (f.tm === team ? 'good' : 'bad') : 'info');
         break;
       }
-      case 'lvl': if (f.u === client.me?.u && f.v === catalog.ultLevel) say(`Ultimate unlocked: ${def.abilities[4].name}!`, 'good'); break;
+      case 'lvl': if (f.u === client.me?.u && f.v === catalog.ultLevel && !duel) say(`Ultimate unlocked: ${def.abilities[4].name}!`, 'good'); break;
+      case 'round':
+        if (f.k === 'start') say(`Round ${f.v}`, 'info');
+        else if (f.k === 'fight') { say('Fight!', 'good'); }
+        else if (f.k === 'won') { say(f.tm === team ? 'You win the round!' : 'Round lost', f.tm === team ? 'good' : 'bad'); sfx.play(f.tm === team ? 'questDone' : 'nope'); push(`${TEAM_NAME[f.tm ?? 0]} won round ${f.v}`, f.tm === team ? 'ally' : 'enemy'); }
+        else if (f.k === 'draw') say('Both sides fell: a draw!', 'info');
+        break;
     }
   };
 
   const me = client.me, snap = client.latest, myUnit = client.myUnit();
+  const mine = client.team, theirs = 3 - client.team;
   const dead = !!(myUnit && myUnit.st & ST.dead);
   const time = snap?.t ?? 0;
   const gold = me?.g ?? 0;
@@ -124,13 +133,22 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
 
       {/* Top: score and time */}
       <div className="hud-top">
-        <div className="score card">
-          <span className="team-blue">{snap?.sc[0] ?? 0}</span>
-          <div className="score-mid"><b>{fmtTime(time)}</b><small>{client.map.name}</small></div>
-          <span className="team-red">{snap?.sc[1] ?? 0}</span>
-        </div>
-        {snap && snap.sd > 0 && <div className={`sudden card ${snap.fv === client.team ? 'good' : 'bad'}`}>☄ Sudden death {snap.sd === 3 ? '· no defences' : ''}</div>}
-        {snap && snap.ob > 0 && snap.ob < 99 && <div className="warden-timer card">Warden in {snap.ob}s</div>}
+        {duel ? (
+          <div className="score card duel">
+            <span className="team-blue">{snap?.rw[0] ?? 0}</span>
+            <div className="score-mid"><b>Round {snap?.rd ?? 1}</b><small>First to 3 · {client.map.name}</small></div>
+            <span className="team-red">{snap?.rw[1] ?? 0}</span>
+          </div>
+        ) : (
+          <div className="score card">
+            <span className="team-blue">{snap?.sc[0] ?? 0}</span>
+            <div className="score-mid"><b>{fmtTime(time)}</b><small>{client.map.name}</small></div>
+            <span className="team-red">{snap?.sc[1] ?? 0}</span>
+          </div>
+        )}
+        {!duel && snap && snap.sd > 0 && <div className={`sudden card ${snap.fv === client.team ? 'good' : 'bad'}`}>☄ Sudden death {snap.sd === 3 ? '· no defences' : ''}</div>}
+        {!duel && snap && snap.ob > 0 && snap.ob < 99 && <div className="warden-timer card">Warden in {snap.ob}s</div>}
+        {duel && snap && snap.rp === 2 && <div className="warden-timer card">Next round in {Math.ceil(snap.rt)}s · shop now!</div>}
       </div>
       <div className="hud-tl">
         <canvas ref={miniRef} width={240} height={120} className="minimap card" />
@@ -168,7 +186,15 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
       {/* Bottom right: attack and abilities */}
       {me && <Abilities def={def} me={me} input={inputRef} catalog={catalog} />}
 
-      {dead && state === 'PLAYING' && <div className="respawn"><b>Respawning in {Math.ceil(me?.rs ?? 0)}</b><small>Spend your gold on upgrades while you wait.</small></div>}
+      {dead && state === 'PLAYING' && !duel && <div className="respawn"><b>Respawning in {Math.ceil(me?.rs ?? 0)}</b><small>Spend your gold on upgrades while you wait.</small></div>}
+      {dead && state === 'PLAYING' && duel && snap?.rp === 1 && <div className="respawn"><b>Knocked out</b><small>Cheer on your team — you're back next round.</small></div>}
+      {duel && state === 'PLAYING' && snap?.rp === 0 && (
+        <div className="overlay countdown round">
+          <small>Round {snap.rd} · <span style={{ color: TEAM_COLOR[mine] }}>{snap.rw[mine - 1]}</span> – <span style={{ color: TEAM_COLOR[theirs] }}>{snap.rw[theirs - 1]}</span></small>
+          <b key={Math.ceil(snap.rt)}>{Math.max(1, Math.ceil(snap.rt))}</b>
+          <p>Get ready!</p>
+        </div>
+      )}
       {book && me && <UpgradeBook def={def} me={me} catalog={catalog} onClose={() => setBook(false)} />}
       {board && <Scoreboard client={client} onClose={() => setBoard(false)} />}
 
@@ -190,7 +216,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
       {state === 'MATCH_START' && (
         <div className="overlay countdown">
           <b key={room?.timer}>{Math.max(1, room?.timer ?? 3)}</b>
-          <p>Destroy the enemy Core!</p>
+          <p>{duel ? 'Win 3 rounds to take the duel!' : 'Destroy the enemy Core!'}</p>
           <small>You are on the <span style={{ color: TEAM_COLOR[client.team] }}>{TEAM_NAME[client.team]}</span> team</small>
         </div>
       )}
@@ -376,7 +402,7 @@ function Result({ state, result, client, onLobby, onLeave }: { state: GameState;
   return (
     <div className={`overlay result ${win ? 'win' : 'lose'}`}>
       <h1>{win ? 'Victory' : 'Defeat'}</h1>
-      <p>{TEAM_NAME[result.winner]} team destroyed the enemy Core in {fmtTime(result.duration)}</p>
+      <p>{TEAM_NAME[result.winner]} team {client.map.type === 'duel' ? 'won the duel' : 'destroyed the enemy Core'} in {fmtTime(result.duration)}</p>
       <div className="result-table parchment">
         <table>
           <thead><tr><th>Player</th><th>Hero</th><th>Lv</th><th>K / D / A</th><th>Damage</th><th>Healing</th></tr></thead>

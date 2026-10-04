@@ -1,6 +1,6 @@
 # Starfall.Grove.Moba.UI
 
-**Mini Rift**: three heroes against three in a small storybook battlefield, with the heroes of Starfall Grove.
+**Mini Rift**: storybook battles (1, 2 or 3 lanes) and duels with the heroes of Starfall Grove.
 React + TypeScript + Vite, drawn on a Canvas 2D with Starfall Grove's paper-puppet art. No game engine.
 
 Live: https://metur100.github.io/Starfall.Grove.Moba.UI/ · Server: [Starfall.Grove.Moba.API](https://github.com/metur100/Starfall.Grove.Moba.API)
@@ -51,5 +51,5 @@ set *Pages → Source* to **GitHub Actions** once.
 | `src/game/render.ts` | Drawing the battlefield, units, effects, health bars and minimap. |
 | `src/game/input.ts` | Keyboard, mouse, thumbstick and ability aiming. |
 | `src/game/heroes.ts` | How each hero is presented (quotes, descriptions, icons). Numbers come from the server. |
-| `src/game/art/` | The paper-cutout art from Starfall Grove, plus Elara. |
+| `src/game/art/` | The paper-cutout art from Starfall Grove (heroes, scenery and its creatures, used for minions and monsters), plus Elara. |
 | `src/screens/` | Main menu, lobby, hero select, match view with the HUD. |

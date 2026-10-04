@@ -146,6 +146,20 @@ export class Cutter {
     draw(this.begin(box, res, style, overlay));
     this.finish(out, x, y);
   }
+  /** Like `bake`, but paints into `into`'s canvas when it is big enough, so a piece re-cut many times a second (a hero
+   *  walking) doesn't make a new canvas each time. */
+  rebake(into: Baked | null, box: Box, res: number, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, overlay?: string): Baked {
+    const extra = Math.max(style.shadowX, style.shadowY) + 2;
+    const [l, t, w, h] = box, bl = l - extra, bt = t - extra, bw = w + extra * 3, bh = h + extra * 3;
+    const W = Math.ceil(bw * res), H = Math.ceil(bh * res);
+    const c = into && into.c.width >= W && into.c.height >= H && into.c.width <= W * 1.5 ? into.c : make(W, H);
+    const o = c.getContext('2d')!;
+    o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, c.width, c.height);
+    o.setTransform(res, 0, 0, res, -bl * res, -bt * res);
+    draw(this.begin(box, res, style, overlay));
+    this.finish(o, 0, 0);
+    return { c, l: bl, t: bt, w: c.width / res, h: c.height / res };
+  }
   /** Bakes a finished piece (with its shadow) into its own canvas, for scenery drawn many times. `under` paints what
    *  lies beneath it on the ground (a soft contact shadow), with no edge. */
   bake(box: Box, res: number, style: CutStyle, draw: (g: CanvasRenderingContext2D) => void, under?: (g: CanvasRenderingContext2D) => void): Baked {

@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { net, type NetStatus } from '../net/connection';
-import type { Catalog } from '../net/protocol';
+import type { Catalog, MapInfo } from '../net/protocol';
+
+/** How a map is described next to its name. */
+export const laneLabel = (m: MapInfo) => m.type === 'duel' ? 'Arena' : m.lanes === 1 ? '1 lane' : `${m.lanes} lanes`;
 import { HERO_ORDER } from '../game/heroes';
 import { heroBust } from '../game/art/bust';
 
@@ -11,6 +14,15 @@ export function MainMenu({ status, catalog, initialCode, onJoined, onRetry }: Pr
   const [code, setCode] = useState(initialCode);
   const [mode, setMode] = useState(3);
   const [map, setMap] = useState('glade');
+  const [type, setType] = useState<'battle' | 'duel'>('battle');
+  const allMaps: MapInfo[] = catalog?.maps ?? [{ id: 'glade', name: 'Starfall Glade', theme: 'meadow', type: 'battle', lanes: 1, blurb: '' }];
+  const maps = allMaps.filter(m => m.type === type);
+  const pickType = (t: 'battle' | 'duel') => {
+    setType(t);
+    const first = allMaps.find(m => m.type === t);
+    if (first) setMap(first.id);
+    if (t === 'duel' && mode === 3) setMode(1);
+  };
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [help, setHelp] = useState(false);
@@ -43,14 +55,21 @@ export function MainMenu({ status, catalog, initialCode, onJoined, onRetry }: Pr
         <div className="menu-cols">
           <section>
             <h3>Create a room</h3>
+            <div className="type-pick">
+              <button className={type === 'battle' ? 'on' : ''} onClick={() => pickType('battle')}><b>⚔ Battle</b><small>Lanes, minions, towers. Destroy the Core.</small></button>
+              <button className={type === 'duel' ? 'on' : ''} onClick={() => pickType('duel')}><b>✦ Duel</b><small>Heroes only. First to 3 rounds wins.</small></button>
+            </div>
             <div className="seg">
               {[1, 2, 3].map(m => <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m}v{m}</button>)}
             </div>
             <div className="maps">
-              {(catalog?.maps ?? [{ id: 'glade', name: 'Starfall Glade', theme: 'meadow', blurb: '' }]).map(m => (
-                <button key={m.id} className={`map-pick ${m.theme} ${map === m.id ? 'on' : ''}`} onClick={() => setMap(m.id)} title={m.blurb}>{m.name}</button>
+              {maps.map(m => (
+                <button key={m.id} className={`map-pick ${m.theme} ${map === m.id ? 'on' : ''}`} onClick={() => setMap(m.id)} title={m.blurb}>
+                  {m.name}<em>{laneLabel(m)}</em>
+                </button>
               ))}
             </div>
+            {maps.find(m => m.id === map)?.blurb && <p className="map-blurb">{maps.find(m => m.id === map)?.blurb}</p>}
             <button className="btn primary" disabled={!online || busy} onClick={() => run(() => net.createRoom(name.trim(), mode, map))}>Create room <b>→</b></button>
           </section>
           <section>
@@ -69,7 +88,8 @@ export function MainMenu({ status, catalog, initialCode, onJoined, onRetry }: Pr
         <button className="link" onClick={() => setHelp(h => !h)}>{help ? 'Hide' : 'How to play (1 minute)'}</button>
         {help && (
           <ul className="howto">
-            <li><b>Goal:</b> destroy the enemy <b>Core</b>. It is shielded until both enemy towers fall (Tower 1, then Tower 2).</li>
+            <li><b>Battle:</b> destroy the enemy <b>Core</b>. Every lane has two towers; the Core opens up once one lane's inner tower falls.</li>
+            <li><b>Duel:</b> heroes only, no minions. Knock out the other side to win a round; first to 3 rounds wins. Late in a round a ring of starfire closes in.</li>
             <li><b>Minions</b> march down the lane every 25 seconds. Towers shoot minions first — let yours soak the shots.</li>
             <li><b>Move</b> with WASD / right-click (PC) or the thumbstick (phone). <b>Attack</b> with Space / left mouse, or by standing still near an enemy.</li>
             <li><b>Abilities:</b> Q E R F (PC) or tap a button to auto-aim; drag it to aim yourself. The ultimate (F) unlocks at level {catalog?.ultLevel ?? 3}.</li>

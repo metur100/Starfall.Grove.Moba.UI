@@ -14,6 +14,10 @@ export type ViewUnit = UnitSnap & {
   walk: number; moving: boolean;
   /** Last attack or cast: when (client seconds), what, and toward where. */
   actT: number; act: string; ax: number; ay: number;
+  /** A windup under way (for the cast bar): when it started, how long it takes, and what is being cast. */
+  castT: number; castDur: number; castK: string;
+  /** When a Doom Sigil was first seen on it. */
+  markAt: number;
   /** Damage flash. */
   hurtT: number;
 };
@@ -69,7 +73,10 @@ export class MatchClient {
     for (const f of s.fx) {
       if ((f.e === 'atk' || f.e === 'cast') && f.u != null) {
         const v = this.units.get(f.u);
-        if (v) { v.actT = this.now; v.act = f.k || ''; v.ax = f.x ?? v.x; v.ay = f.y ?? v.y; }
+        if (v) {
+          v.actT = this.now; v.act = f.k || ''; v.ax = f.x ?? v.x; v.ay = f.y ?? v.y;
+          if ((f.v ?? 0) >= 200) { v.castT = this.now; v.castDur = (f.v ?? 0) / 1000; v.castK = f.k || ''; }
+        }
       }
       if (f.e === 'dmg' && f.u != null && (f.v ?? 0) > 0) { const v = this.units.get(f.u); if (v) v.hurtT = this.now; }
       if (f.e === 'respawn' && f.u === me.u) this.pred.ok = false;
@@ -100,9 +107,12 @@ export class MatchClient {
       // Blend unless it jumped (a respawn, a blink): then show it where it is now.
       if (p && Math.abs(p.x - u.x) + Math.abs(p.y - u.y) < 220) { x = p.x + (u.x - p.x) * k; y = p.y + (u.y - p.y) * k; }
       let v = this.units.get(u.i);
-      if (!v) { v = { ...u, rx: x, ry: y, walk: 0, moving: false, actT: -9, act: '', ax: x, ay: y, hurtT: -9 }; this.units.set(u.i, v); }
+      if (!v) { v = { ...u, rx: x, ry: y, walk: 0, moving: false, actT: -9, act: '', ax: x, ay: y, hurtT: -9, castT: -9, castDur: 0, castK: '', markAt: -9 }; this.units.set(u.i, v); }
       const dx = x - v.rx, dy = y - v.ry, moved = Math.hypot(dx, dy);
       Object.assign(v, u);
+      if (u.st & ST.marked) { if (v.markAt < 0) v.markAt = this.now; } else v.markAt = -9;
+      // A stun breaks a windup.
+      if (u.st & ST.stun) v.castT = -9;
       v.moving = moved > 20 * dt;
       if (v.moving) v.walk += dt * 10;
       v.rx = x; v.ry = y;

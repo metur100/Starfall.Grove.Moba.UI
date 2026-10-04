@@ -318,3 +318,16 @@ tr.me td { background: rgba(242, 201, 106, .35); }
   .stick-zone { bottom: 90px; }
   .banner { top: 30%; font-size: 15px; white-space: normal; }
 }
+
+/* ─────────── battle / duel choice, lane labels, duel HUD */
+.type-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.type-pick button { display: grid; gap: 2px; text-align: left; padding: 9px 11px; border-radius: 12px; border: 2px solid rgba(59, 42, 47, .25); background: rgba(255, 255, 255, .45); color: var(--paper-ink); }
+.type-pick button b { font: 700 15px var(--display); }
+.type-pick button small { font-size: 11px; color: var(--paper-muted); font-weight: 700; }
+.type-pick button.on { border-color: var(--paper-ink); background: #fff3d0; box-shadow: 0 0 0 2px var(--edge); }
+.map-pick { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.map-pick em { font: 800 10px var(--ui); font-style: normal; background: rgba(29, 21, 32, .35); padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.map-blurb { margin: 0; font-size: 12px; color: var(--paper-muted); }
+.seg button small { font-size: 10px; opacity: .7; }
+.score.duel .score-mid b { font-size: 14px; }
+.overlay.countdown.round small { font: 800 16px var(--ui); color: var(--cream); }

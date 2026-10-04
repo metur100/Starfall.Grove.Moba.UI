@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { net } from '../net/connection';
 import type { Catalog, RoomView } from '../net/protocol';
+import { laneLabel } from './MainMenu';
 
 type Props = { room: RoomView; catalog: Catalog | null; onLeave: () => void };
 
@@ -31,7 +32,7 @@ export function Lobby({ room, catalog, onLeave }: Props) {
           <button className="link" onClick={share}>{copied ? 'Link copied!' : 'Share invite link'}</button>
         </div>
         <div className="lobby-mode card">
-          <small>{catalog?.maps.find(m => m.id === room.map)?.name ?? room.map}</small>
+          <small>{room.type === 'duel' ? 'Duel' : 'Battle'} · {catalog?.maps.find(m => m.id === room.map)?.name ?? room.map}</small>
           <b>{room.mode}v{room.mode}</b>
         </div>
       </header>
@@ -39,7 +40,8 @@ export function Lobby({ room, catalog, onLeave }: Props) {
       {host && (
         <div className="host-bar parchment">
           <div className="seg">{[1, 2, 3].map(m => <button key={m} className={room.mode === m ? 'on' : ''} onClick={() => act(net.setMode(m))}>{m}v{m}</button>)}</div>
-          <div className="seg">{(catalog?.maps ?? []).map(m => <button key={m.id} className={room.map === m.id ? 'on' : ''} onClick={() => act(net.setMap(m.id))}>{m.name}</button>)}</div>
+          <div className="seg">{(['battle', 'duel'] as const).map(t => <button key={t} className={room.type === t ? 'on' : ''} onClick={() => { const first = catalog?.maps.find(m => m.type === t); if (first && room.type !== t) act(net.setMap(first.id)); }}>{t === 'battle' ? '⚔ Battle' : '✦ Duel'}</button>)}</div>
+          <div className="seg">{(catalog?.maps ?? []).filter(m => m.type === room.type).map(m => <button key={m.id} className={room.map === m.id ? 'on' : ''} onClick={() => act(net.setMap(m.id))}>{m.name} <small>{laneLabel(m)}</small></button>)}</div>
         </div>
       )}
 
