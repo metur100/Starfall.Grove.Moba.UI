@@ -399,7 +399,9 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .seat.ghost { visibility: hidden; }
 .team-col h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .team-col h3 .link { font: 800 12px var(--ui); color: var(--paper-ink); }
-.hero-detail-top { height: 158px; }
+.hero-detail-top { height: 158px; overflow: hidden; }
+.hero-detail-top > div { min-width: 0; }
+.hero-detail h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 4px; }
 .hero-detail blockquote { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
 .blurb { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.8em; }
 .ability-list li { height: 94px; overflow: hidden; }
@@ -465,9 +467,16 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .round-picks em { text-shadow: none; font: 800 13px var(--ui); font-style: normal; padding: 3px 10px; border-radius: 999px; background: rgba(29, 21, 32, .7); border: 1.5px solid var(--edge); color: #ffe38a; }
 
 @media (max-height: 560px) {
-  .hero-detail-top { height: 100px; }
+  /* Phones: name, title and role beside the hero; the quote and blurb are left out to keep it in its box. */
+  .hero-detail-top { height: 104px; }
+  .hero-detail blockquote, .hero-detail .blurb { display: none; }
+  .hero-detail h1 { font-size: 26px; padding-top: 2px; }
+  .hero-detail h4 { font-size: 12px; margin: 2px 0 6px; }
+  .facts span { font-size: 14px; }
+  .ability-list { margin-top: 6px; }
   .ability-list li { height: 76px; }
-  .ability-list li:first-child { height: 50px; }
+  .ability-list li:first-child { height: 46px; }
+  .ability-list li:first-child p { -webkit-line-clamp: 1; }
   .ability-list p { -webkit-line-clamp: 2; }
   .type-pick button { padding: 6px 8px; text-align: center; }
   .type-pick button b { font-size: 13px; }
@@ -484,3 +493,15 @@ tr.me td { background: rgba(242, 201, 106, .35); }
   .learn-hint { bottom: calc(168px + env(safe-area-inset-bottom)); font-size: 12px; }
 }
 .duel-tag { color: #9a6a10 !important; font-weight: 900; }
+.facts span { white-space: nowrap; }
+/* Small phones held sideways: slimmer hero and team columns, so the description keeps its width. */
+@media (max-height: 560px) and (max-width: 720px) {
+  .select-body { grid-template-columns: 150px minmax(0, 1fr) 140px; }
+  .hero-card img { width: 40px; height: 40px; }
+  .hero-card b { font-size: 12px; }
+  .hero-card small { display: none; }
+  .hero-stage { width: 84px !important; height: 84px !important; }
+  .facts { gap: 12px; }
+  .pick b { font-size: 12px; } .pick small { font-size: 11px; }
+  .select-team .lock { font-size: 13px; padding: 0 8px; }
+}
