@@ -105,7 +105,7 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; border-radius: 5
 .team-col { padding: 12px; display: grid; gap: 7px; align-content: start; }
 .team-col h3 { margin: 0; }
 .team-col.t1 h3 { color: var(--blue); } .team-col.t2 h3 { color: var(--red); }
-.seat { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, .55); border: 1.5px solid rgba(59, 42, 47, .25); min-height: 42px; }
+.seat { display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: rgba(255, 255, 255, .55); border: 1.5px solid rgba(59, 42, 47, .25); height: 42px; }
 .seat.me { border-color: var(--paper-ink); background: #fff8e6; }
 .seat.off { opacity: .6; }
 .seat.empty { border-style: dashed; background: transparent; justify-content: space-between; color: var(--paper-muted); }
@@ -313,7 +313,7 @@ tr.me td { background: rgba(242, 201, 106, .35); }
   .lobby-mode { padding: 4px 12px; } .lobby-mode b { font-size: 18px; }
   .host-bar { padding: 5px; gap: 5px; }
   .team-col { padding: 8px 10px; gap: 5px; }
-  .seat { min-height: 34px; padding: 4px 10px; }
+  .seat { height: 34px; padding: 0 10px; }
   .lobby-foot .hint { display: none; }
   .select { gap: 6px; }
   .select-title { display: none; }
@@ -394,3 +394,93 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .seg button small { font-size: 10px; opacity: .7; }
 .score.duel .score-mid b { font-size: 14px; }
 .overlay.countdown.round small { font: 800 16px var(--ui); color: var(--cream); }
+
+/* ─────────── steady layouts: screens keep their size when the mode or hero changes */
+.seat.ghost { visibility: hidden; }
+.team-col h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.team-col h3 .link { font: 800 12px var(--ui); color: var(--paper-ink); }
+.hero-detail-top { height: 158px; }
+.hero-detail blockquote { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
+.blurb { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.8em; }
+.ability-list li { height: 94px; overflow: hidden; }
+.ability-list li:first-child { height: 62px; }
+.ability-list li > div { min-width: 0; }
+.ability-list b, .ability-list small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ability-list p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.type-pick button b { white-space: nowrap; }
+
+/* ─────────── learning spells (battles: one per level) */
+.ability.unlearned { filter: grayscale(1) brightness(.55); }
+.ability.unlearned.learnable { filter: none; animation: learnable 1s ease-in-out infinite alternate; }
+@keyframes learnable { from { box-shadow: 0 0 0 1.5px var(--ink), 0 0 6px var(--gold); } to { box-shadow: 0 0 0 3px var(--gold), 0 0 26px var(--gold); } }
+.ab-learn { position: absolute; z-index: 3; top: -6px; left: -6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(180deg, #ffe49a, #f2b84a); color: var(--ink); font: 900 18px/1 var(--ui); border: 2px solid var(--ink); }
+.learn-hint { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(222px + env(safe-area-inset-bottom)); padding: 6px 14px; border-radius: 999px; background: linear-gradient(180deg, #ffe49a, #f2b84a); color: var(--ink); font: 900 13px var(--ui); border: 2px solid var(--ink); box-shadow: var(--shadow); pointer-events: none; animation: hintIn .4s ease-out, bob 2s ease-in-out .4s infinite; }
+@keyframes hintIn { from { transform: translateY(16px) scale(.8); opacity: 0; } }
+
+/* ─────────── leave dialog */
+.confirm { width: min(420px, 100%); padding: 18px 20px; text-align: center; }
+.confirm h3 { font-size: 22px; margin: 0 0 6px; }
+.confirm p { margin: 0 0 14px; color: var(--paper-muted); font-weight: 700; }
+.confirm-actions { display: flex; gap: 10px; justify-content: center; }
+.btn.danger { background: linear-gradient(180deg, #ff9a8a, #d8564f); color: #fff; text-shadow: 1px 1px 0 rgba(0, 0, 0, .3); }
+
+/* ─────────── duels: the upgrade picks before each round */
+.picks-wrap { position: absolute; inset: 0; z-index: 7; background: radial-gradient(ellipse at 50% 40%, rgba(58, 42, 64, .82), rgba(18, 10, 20, .92)); animation: fadeIn .25s ease-out; }
+@keyframes fadeIn { from { opacity: 0; } }
+.picks { width: min(980px, 100%); display: grid; gap: 12px; }
+.picks-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-shadow: 2px 3px 0 var(--ink); }
+.picks-head small { font: 800 12px var(--ui); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+.picks-head h2 { font: 700 30px/1.1 var(--display); margin: 2px 0 4px; }
+.picks-head p { margin: 0; color: var(--muted); font-weight: 700; }
+.picks-time { flex: none; display: grid; justify-items: center; width: 84px; height: 84px; place-content: center; border-radius: 50%; border: 3px solid var(--gold); background: rgba(29, 21, 32, .7); box-shadow: 0 0 24px rgba(242, 201, 106, .35); }
+.picks-time b { font: 700 36px/1 var(--deco); color: var(--gold); }
+.picks-time small { font-size: 9px; letter-spacing: .04em; }
+.picks-time.hurry { border-color: var(--bad); animation: pulse .5s ease-in-out infinite alternate; }
+.picks-time.hurry b { color: var(--bad); }
+.picks-cards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.pick-card { display: grid; gap: 8px; align-content: start; padding: 14px; border-radius: 16px; border: 2.5px solid var(--edge); background: radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--c) 30%, #3a2c40), #241b29 75%); box-shadow: 0 0 0 1.5px var(--ink), 0 0 30px color-mix(in srgb, var(--c) 30%, transparent), var(--shadow); animation: cardIn .35s ease-out backwards; }
+.pick-card:nth-child(2) { animation-delay: .08s; }
+@keyframes cardIn { from { transform: translateY(20px) scale(.95); opacity: 0; } }
+.pick-card.done { opacity: .75; border-color: var(--good); }
+.pick-card-head { display: flex; gap: 10px; align-items: center; }
+.pick-card-head .ab-icon { width: 52px; height: 52px; font-size: 26px; }
+.pick-card-head b { display: block; font: 700 22px var(--display); }
+.pick-card-head small { color: var(--muted); font-weight: 800; }
+.pick-card-text { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.35; min-height: 2.7em; }
+.pick-opts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.pick-opt { display: grid; gap: 6px; align-content: start; text-align: left; padding: 10px 12px; border-radius: 12px; border: 2px solid var(--paper-ink); background: var(--paper) var(--grain); color: var(--paper-ink); box-shadow: 0 0 0 2px var(--edge), var(--shadow); transition: transform .12s; }
+.pick-opt:hover { transform: translateY(-3px) rotate(-.5deg); background: #fff3d0; }
+.pick-opt:active { transform: scale(.97); }
+.pick-opt > b { font: 700 17px var(--display); }
+.pick-opt ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.pick-opt li { display: flex; align-items: baseline; gap: 5px; font-size: 13px; font-weight: 800; flex-wrap: wrap; }
+.pick-opt li span { color: var(--paper-muted); flex-basis: 100%; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.pick-opt li em { font-style: normal; color: var(--paper-muted); text-decoration: line-through; }
+.pick-opt li i { font-style: normal; color: var(--paper-muted); }
+.pick-opt li strong { color: #2f7a28; font-size: 16px; }
+.pick-card-done { display: grid; place-content: center; justify-items: center; min-height: 80px; font: 900 20px var(--ui); color: var(--good); }
+.pick-card-done small { font-size: 12px; color: var(--muted); }
+.picks-foot { margin: 0; text-align: center; color: var(--muted); font-weight: 700; font-size: 13px; }
+.round-picks { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.round-picks em { text-shadow: none; font: 800 13px var(--ui); font-style: normal; padding: 3px 10px; border-radius: 999px; background: rgba(29, 21, 32, .7); border: 1.5px solid var(--edge); color: #ffe38a; }
+
+@media (max-height: 560px) {
+  .hero-detail-top { height: 100px; }
+  .ability-list li { height: 76px; }
+  .ability-list li:first-child { height: 50px; }
+  .ability-list p { -webkit-line-clamp: 2; }
+  .type-pick button { padding: 6px 8px; text-align: center; }
+  .type-pick button b { font-size: 13px; }
+  .menu-card { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.45fr) minmax(0, 1fr); }
+  .picks { gap: 8px; }
+  .picks-head h2 { font-size: 22px; }
+  .picks-head p { font-size: 12px; }
+  .picks-time { width: 64px; height: 64px; } .picks-time b { font-size: 28px; } .picks-time small { font-size: 8px; }
+  .pick-card { padding: 10px; gap: 6px; }
+  .pick-card-head .ab-icon { width: 40px; height: 40px; font-size: 20px; }
+  .pick-card-head b { font-size: 18px; }
+  .pick-card-text { font-size: 12px; }
+  .pick-opt { padding: 7px 9px; }
+  .learn-hint { bottom: calc(168px + env(safe-area-inset-bottom)); font-size: 12px; }
+}
+.duel-tag { color: #9a6a10 !important; font-weight: 900; }

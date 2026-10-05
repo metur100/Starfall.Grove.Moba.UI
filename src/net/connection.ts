@@ -145,6 +145,7 @@ class Net {
   loaded() { return this.act('Loaded'); }
   backToLobby() { return this.act('BackToLobby'); }
   upgrade(slot: number, choice: number) { return this.act('Upgrade', slot, choice); }
+  learn(slot: number) { return this.act('Learn', slot); }
   cast(slot: number, x: number, y: number) { return this.act('Cast', slot, Math.round(x), Math.round(y)); }
 
   private lastInput = '';

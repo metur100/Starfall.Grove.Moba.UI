@@ -38,7 +38,8 @@ set *Pages → Source* to **GitHub Actions** once.
 | Move | WASD / arrows, or right-click a spot | Thumbstick (touch anywhere on the left) |
 | Attack | Space or hold left mouse; standing still attacks too | Big button (hold) |
 | Abilities | Q, E, R, F (or 1–4), aimed at the mouse | Tap = best target in range; drag = aim yourself |
-| Spellbook | B | Gold button |
+| Learn a spell (battles: one per level) | Click the glowing ability, or press its key | Tap the glowing ability |
+| Spellbook (battles) | B | Gold button |
 | Scoreboard (kills, damage to heroes, healing) | Tab | ☰ |
 
 Phones are played sideways: held upright, the game asks you to turn the phone, and on Android it goes fullscreen.

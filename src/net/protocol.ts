@@ -8,6 +8,8 @@ export type AbilityDef = {
 export type HeroDef = {
   id: string; name: string; title: string; role: string; difficulty: number; hp: number; hpPerLevel: number; resource: string;
   mana: number; manaRegen: number; armor: number; speed: number; adPerLevel: number; crit: number; melee: boolean; abilities: AbilityDef[];
+  /** The two abilities a duellist upgrades before each round. */
+  duelSlots: number[];
 };
 export type UpgradeOption = { id: string; name: string; text: string };
 export type MapInfo = { id: string; name: string; theme: string; type: 'battle' | 'duel'; lanes: number; blurb: string };
@@ -43,6 +45,10 @@ export type Snapshot = {
 export type Me = {
   u: number; g: number; lv: number; xp: number; xn: number; mp: number; mm: number; cd: number[]; cm: number[]; mc: number[];
   up: string[][]; rs: number; sp: number; vx: number; vy: number; ad: number;
+  /** Learned abilities (bit i = slot i) and spell points left to learn more (battles: one per level). */
+  ln: number; lp: number;
+  /** Duels, before a round: the abilities still waiting for this round's free upgrade. */
+  dq: number[];
 };
 
 export type ServerObstacle = { x: number; y: number; r: number; k: string; s: number };

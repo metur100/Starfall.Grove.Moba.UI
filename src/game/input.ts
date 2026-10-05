@@ -23,6 +23,7 @@ export class Input {
   private detach: Array<() => void> = [];
   onError: (msg: string) => void = () => {};
   onUpgradeKey: () => void = () => {};
+  onLearn: (slot: number) => void = () => {};
   onScoreKey: (down: boolean) => void = () => {};
 
   private client: MatchClient;
@@ -94,7 +95,7 @@ export class Input {
 
   // ───────────────────────────── touch aiming (driven by the ability buttons)
 
-  beginAim(slot: number) { this.aiming = { slot, dx: 0, dy: 0 }; }
+  beginAim(slot: number) { this.aiming = this.learned(slot) ? { slot, dx: 0, dy: 0 } : null; if (!this.aiming) void this.cast(slot); }
   /** dx, dy: the drag from the button, -1…1 of its reach. */
   moveAim(dx: number, dy: number) { if (this.aiming) { this.aiming.dx = dx; this.aiming.dy = dy; } }
   endAim(cancel: boolean) {
@@ -157,7 +158,18 @@ export class Input {
     return { x: me.rx + Math.cos(a) * range * .7, y: me.ry + Math.sin(a) * range * .7 };
   }
 
+  /** Whether the hero has learned this ability yet (battles: one per level). */
+  learned(slot: number) { const me = this.client.me; return !me || slot === 0 || !!(me.ln & (1 << slot)); }
+
   async cast(slot: number, at?: { x: number; y: number }) {
+    // Not learned yet: spend a spell point on it, if there is one.
+    if (!this.learned(slot)) {
+      const me = this.client.me!;
+      if (me.lp <= 0) { this.onError('unlearned'); return; }
+      const err = await net.learn(slot);
+      if (err) this.onError(err); else this.onLearn(slot);
+      return;
+    }
     const p = at ?? this.autoAim(slot);
     const err = await net.cast(slot, p.x, p.y);
     if (err) this.onError(err);

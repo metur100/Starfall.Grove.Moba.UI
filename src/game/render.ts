@@ -78,6 +78,10 @@ export class Renderer {
   private streaks: Streak[] = [];
   private slashes: Slash[] = [];
   private shake = 0;
+  /** A full-screen flash (gold for a kill, red when you fall) fading out. */
+  private flash = { color: '#ffffff', a: 0 };
+  /** Drifting motes that make the map feel alive: pollen, snow or embers, by theme. */
+  private motes: Array<{ x: number; y: number; vx: number; vy: number; ph: number }> = [];
   cam = { x: 0, y: 0, scale: 1 };
   private dpr = 1;
   private w = 1; private h = 1;
@@ -251,6 +255,7 @@ export class Renderer {
     if (sw > 0 && sh > 0) g.drawImage(this.ground, sx * r, sy * r, sw * r, sh * r, sx, sy, sw, sh);
 
     this.drawFloor(g, inView);
+    if (me && !(me.st & ST.dead)) this.drawDanger(g, me);
 
     const draws: Array<{ y: number; run: () => void }> = [];
     for (const p of this.props) if (inView(p.o.x, p.o.y)) draws.push({ y: p.o.y, run: () => g.drawImage(p.b.c, p.o.x + p.b.l, p.o.y + p.b.t, p.b.w, p.b.h) });
@@ -266,7 +271,59 @@ export class Renderer {
     this.drawSlashes(g, dt);
     this.drawEffects(g, dt);
     for (const u of C.units.values()) if (inView(u.rx, u.ry)) { this.drawBars(g, u); this.drawCastBar(g, u); }
+    this.drawMotes(g, dt, view);
     this.drawTexts(g, dt);
+    this.drawOverlay(g, dt, me);
+  }
+
+  /** A red ring round an enemy tower or Core that can shoot you, when you come near it. */
+  private drawDanger(g: CanvasRenderingContext2D, me: ViewUnit) {
+    for (const u of this.client.units.values()) {
+      if ((u.k !== 'tower' && u.k !== 'core') || u.st & ST.dead || !this.client.isEnemy(u)) continue;
+      if (u.k === 'core' && u.st & ST.invulnerable) continue;
+      const range = (u.k === 'core' ? 450 : 520) + 24, d = Math.hypot(me.rx - u.rx, me.ry - u.ry);
+      if (d > range + 260) continue;
+      const inside = d < range, a = inside ? .55 + Math.sin(this.t * 8) * .2 : .35 * (1 - (d - range) / 260);
+      g.save();
+      g.setLineDash([18, 12]); g.lineDashOffset = -this.t * 40;
+      g.strokeStyle = alpha('#ff5a4a', a); g.lineWidth = inside ? 5 : 3;
+      g.beginPath(); g.ellipse(u.rx, u.ry, range, range * .62, 0, 0, TAU); g.stroke();
+      g.restore();
+      if (inside) { g.fillStyle = alpha('#ff5a4a', .06); g.beginPath(); g.ellipse(u.rx, u.ry, range, range * .62, 0, 0, TAU); g.fill(); }
+    }
+  }
+
+  private drawMotes(g: CanvasRenderingContext2D, dt: number, view: { x0: number; x1: number; y0: number; y1: number }) {
+    const want = Math.round(28 * this.quality), theme = this.client.map.theme;
+    const col = theme === 'ember' ? '#ffb05c' : theme === 'summit' ? '#ffffff' : '#fff2a1';
+    const fall = theme === 'summit' ? 26 : theme === 'ember' ? -22 : -6;
+    while (this.motes.length < want) this.motes.push({ x: view.x0 + Math.random() * (view.x1 - view.x0), y: view.y0 + Math.random() * (view.y1 - view.y0), vx: (Math.random() - .5) * 18, vy: fall + (Math.random() - .5) * 10, ph: Math.random() * TAU });
+    const w = view.x1 - view.x0, h = view.y1 - view.y0;
+    for (const m of this.motes) {
+      m.ph += dt; m.x += (m.vx + Math.sin(m.ph * 1.3) * 12) * dt; m.y += m.vy * dt;
+      // Wrap round the view, so there are always some on screen.
+      if (m.x < view.x0) m.x += w; else if (m.x > view.x1) m.x -= w;
+      if (m.y < view.y0) m.y += h; else if (m.y > view.y1) m.y -= h;
+      const a = .35 + Math.sin(m.ph * 2.2) * .25;
+      glow(g, m.x, m.y, theme === 'summit' ? 6 : 9, col, a);
+      circle(g, m.x, m.y, theme === 'summit' ? 2 : 1.6, alpha(col, Math.min(1, a + .3)));
+    }
+  }
+
+  /** Screen-space touches: a flash for big moments, and a red pulse at the edges when you are nearly down. */
+  private drawOverlay(g: CanvasRenderingContext2D, dt: number, me: ViewUnit | undefined) {
+    const W = this.canvas.width, H = this.canvas.height;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    if (me && !(me.st & ST.dead) && me.hp / me.mh < .3) {
+      const k = (1 - me.hp / me.mh / .3) * (.55 + Math.sin(this.t * 6) * .2);
+      const v = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .35, W / 2, H / 2, Math.max(W, H) * .7);
+      v.addColorStop(0, 'rgba(200,30,40,0)'); v.addColorStop(1, 'rgba(200,30,40,' + (k * .55).toFixed(3) + ')');
+      g.fillStyle = v; g.fillRect(0, 0, W, H);
+    }
+    if (this.flash.a > 0) {
+      g.globalAlpha = this.flash.a; g.fillStyle = this.flash.color; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+      this.flash.a = Math.max(0, this.flash.a - dt * 1.6);
+    }
   }
 
   // ───────────────────────────── floor: fountains, plants, zones, telegraphs, aim, the duel ring
@@ -412,11 +469,16 @@ export class Renderer {
     const dead = !!(u.st & ST.dead);
     if (u.k === 'tower') {
       const b = this.bakes.get(`${dead ? 'ruin' : 'tower'}|${u.tm}`)!;
-      g.drawImage(b.c, x + b.l, y + b.t, b.w, b.h);
+      const hurt = t - u.hurtT < .16 ? (1 - (t - u.hurtT) / .16) : 0, jx = hurt ? Math.sin(t * 90) * 3 * hurt : 0;
+      if (!dead) { const pulse = .5 + Math.sin(t * 2.4 + u.i) * .15; ellipse(g, x, y + 4, 64, 22, alpha(TEAM_COLOR[u.tm], .18 * pulse + .08)); }
+      g.drawImage(b.c, x + jx + b.l, y + b.t, b.w, b.h);
       if (!dead) {
         const warded = !!(u.st & ST.invulnerable), col = warded ? '#c8c8d8' : TEAM_LIGHT[u.tm], by = y - 140 + Math.sin(t * 2) * 3;
-        glow(g, x, by, 34, col, .7);
-        g.fillStyle = col; star4(g, x, by, 12, t); g.fill(); g.strokeStyle = INK; g.lineWidth = 1.4; g.stroke();
+        const fire = Math.max(0, 1 - (t - u.actT) / .35);
+        glow(g, x + jx, by, 34 + fire * 40, col, .7 + fire * .3);
+        if (!warded) { g.strokeStyle = alpha(col, .55); g.lineWidth = 2; g.beginPath(); g.ellipse(x + jx, by, 22 + fire * 8, 8 + fire * 3, 0, t * 2, t * 2 + Math.PI * 1.4); g.stroke(); }
+        g.fillStyle = col; star4(g, x + jx, by, 12 + fire * 6, t * (1 + fire * 4)); g.fill(); g.strokeStyle = INK; g.lineWidth = 1.4; g.stroke();
+        if (hurt) glow(g, x + jx, y - 70, 70, '#ffffff', .35 * hurt);
         if (warded) this.drawWard(g, x, y - 60, 70, 110);
       }
       return;
@@ -446,7 +508,9 @@ export class Renderer {
       // Minions wear their team's colour as a ring of light at their feet.
       g.strokeStyle = alpha(TEAM_COLOR[u.tm], .85); g.lineWidth = 2.5; g.beginPath(); g.ellipse(x, y + 3, size + 3, (size + 3) * .42, 0, 0, TAU); g.stroke();
     }
-    if (hero) { this.drawHero(g, u, mine); return; }
+    const jolt = t - u.hurtT < .12 ? (1 - (t - u.hurtT) / .12) * 3.5 : 0;
+    if (jolt) { g.save(); g.translate(Math.sin(t * 80 + u.i) * jolt, 0); }
+    if (hero) { this.drawHero(g, u, mine); if (jolt) g.restore(); return; }
     if (u.k === 'fenn' || u.k === 'wolf') {
       const spirit = u.k === 'wolf';
       g.save(); if (spirit) { g.globalAlpha = .8; glow(g, x, y - 14, 40, '#9fe8b0', .5); }
@@ -457,6 +521,7 @@ export class Renderer {
     }
     this.drawMob(g, u);
     this.drawStatus(g, u, x, y, false);
+    if (jolt) g.restore();
   }
 
   private mobFor(u: ViewUnit): Mob | null {
@@ -794,6 +859,11 @@ export class Renderer {
         case 'atk': {
           if (u && f.k === 'slash') this.slashes.push({ x: u.rx, y: u.ry - 20, angle: Math.atan2((f.y ?? u.ry) - u.ry, (f.x ?? u.rx) - u.rx), reach: 120, life: .28, max: .28, narrow: false, color: '#ffd0a0' });
           if (u && f.k === 'stab') this.slashes.push({ x: u.rx, y: u.ry - 20, angle: Math.atan2((f.y ?? u.ry) - u.ry, (f.x ?? u.rx) - u.rx), reach: 90, life: .18, max: .18, narrow: true, color: '#e0c8ff' });
+          if (u && (f.k === 'tower' || f.k === 'core')) {
+            const top = u.ry - (f.k === 'core' ? 105 : 140);
+            this.streaks.push({ x0: u.rx, y0: top, x1: f.x ?? u.rx, y1: (f.y ?? u.ry) - 24, life: .14, max: .14, color: TEAM_LIGHT[u.tm] });
+            this.puff(u.rx, top + 20, 5, TEAM_LIGHT[u.tm], 'star');
+          }
           const s: Partial<Record<string, Sfx>> = { spark: 'spark', frostbolt: 'orb', seed: 'thornShot', arrow: 'thornShot', slash: 'hit', stab: 'hit', tower: 'voidShot', core: 'voidShot', warden: 'voidShot' };
           const snd = f.k ? s[f.k] : undefined;
           if (snd) sfx.play(snd, at, .6);
@@ -829,17 +899,38 @@ export class Renderer {
           const big = isHero(f.k || '') || f.k === 'warden';
           this.puff(at.x, at.y - 20, big ? 24 : 9, f.k === 'tower' || f.k === 'core' ? '#c8b8a8' : '#fff4de', 'smoke');
           this.puff(at.x, at.y - 20, big ? 14 : 5, '#e8d8c8', 'shard');
-          if (big) { this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 120, life: .5, max: .5, color: '#fff4de', width: 4 }); sfx.play(f.k === 'warden' ? 'bossDie' : 'kill', at); }
-          else if (f.k === 'tower' || f.k === 'core') { this.shake = 16; sfx.play('boom', at); }
+          if (big) {
+            const col = TEAM_LIGHT[f.tm ?? 0] || '#fff4de';
+            this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 130, life: .55, max: .55, color: '#fff4de', width: 5 });
+            this.rings.push({ x: at.x, y: at.y, r0: 30, r1: 190, life: .8, max: .8, color: col, width: 3 });
+            this.puff(at.x, at.y - 30, 12, col, 'star');
+            this.shake = Math.max(this.shake, 6);
+            sfx.play(f.k === 'warden' ? 'bossDie' : 'kill', at);
+          } else if (f.k === 'tower' || f.k === 'core') {
+            const col = TEAM_LIGHT[f.tm ?? 0] || '#fff4de', core = f.k === 'core';
+            this.shake = core ? 26 : 18;
+            for (let i = 0; i < 3; i++) this.rings.push({ x: at.x, y: at.y, r0: 20 + i * 30, r1: (core ? 320 : 230) + i * 50, life: .6 + i * .2, max: .6 + i * .2, color: i === 1 ? col : '#ffd9a0', width: 7 - i * 2, fill: i === 0 });
+            this.puff(at.x, at.y - 80, core ? 40 : 26, '#ffb05c', 'ember');
+            this.puff(at.x, at.y - 60, core ? 30 : 20, '#8c7f72', 'shard');
+            this.puff(at.x, at.y - 100, 16, col, 'star');
+            this.streaks.push({ x0: at.x, y0: at.y, x1: at.x, y1: at.y - 420, life: .5, max: .5, color: col });
+            sfx.play('boom', at); sfx.play('bossDie', at, .5);
+          }
           break;
         }
-        case 'lvl': if (u) { this.text(at.x, at.y - 116, 'Level up!', '#ffe38a', 17); this.rings.push({ x: at.x, y: at.y, r0: 20, r1: 80, life: .6, max: .6, color: '#ffe38a', width: 4 }); this.puff(at.x, at.y - 30, 12, '#ffe38a', 'star'); if (f.u === C.me?.u) sfx.play('levelUp'); } break;
+        case 'lvl': if (u) { this.streaks.push({ x0: at.x, y0: at.y, x1: at.x, y1: at.y - 260, life: .45, max: .45, color: '#ffe38a' }); this.text(at.x, at.y - 116, 'Level up!', '#ffe38a', 17); this.rings.push({ x: at.x, y: at.y, r0: 20, r1: 80, life: .6, max: .6, color: '#ffe38a', width: 4 }); this.puff(at.x, at.y - 30, 12, '#ffe38a', 'star'); if (f.u === C.me?.u) sfx.play('levelUp'); } break;
         case 'block': if (u) this.text(at.x, at.y - 78, 'Blocked', '#d6e2f5', 13); break;
         case 'reflect': if (u) { this.rings.push({ x: at.x, y: at.y - 30, r0: 20, r1: 60, life: .25, max: .25, color: '#d6e2f5', width: 3 }); sfx.play('reflect', at); } break;
         case 'star': if (u) { this.puff(at.x, at.y - 30, 8, '#fff1b8', 'star'); sfx.play('orb', at); } break;
         case 'plant': this.puff(f.x ?? 0, (f.y ?? 0) - 10, 14, '#f7c5d5', 'leaf'); sfx.play('drink', { x: f.x ?? 0, y: f.y ?? 0 }); break;
         case 'respawn': this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 90, life: .6, max: .6, color: TEAM_LIGHT[C.team], width: 4 }); this.puff(at.x, at.y - 30, 12, TEAM_LIGHT[u?.tm ?? C.team], 'star'); break;
-        case 'struct': this.shake = 20; break;
+        case 'struct': this.shake = 20; this.flash = { color: '#fff4de', a: .22 }; break;
+        case 'kill':
+          if (f.u === C.me?.u) this.flash = { color: '#ffd35c', a: .28 };
+          else if (f.u2 === C.me?.u) this.flash = { color: '#c81e28', a: .4 };
+          break;
+        case 'learn': if (u) { this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 70, life: .5, max: .5, color: '#ffe38a', width: 4 }); this.puff(at.x, at.y - 40, 10, '#ffe38a', 'star'); } break;
+        case 'upgrade': if (u) { this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 60, life: .45, max: .45, color: '#c9b6ff', width: 3 }); this.puff(at.x, at.y - 40, 8, '#e8dcff', 'star'); } break;
         case 'round': if (f.k === 'fight') { for (const team of [1, 2]) { const [x, y] = C.map.spawn[team]; this.rings.push({ x, y, r0: 20, r1: 160, life: .7, max: .7, color: TEAM_COLOR[team], width: 5 }); } sfx.play('roar'); } break;
       }
     }

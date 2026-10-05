@@ -10,6 +10,7 @@ import { heroBust } from '../game/art/bust';
 import { sfx } from '../game/audio';
 import type { HeroId } from '../game/types';
 import { Fit } from '../ui/Fit';
+import { describeUpgrade } from '../game/upgrades';
 
 type Props = { state: GameState; client: MatchClient; room: RoomView | null; result: MatchEnd | null; catalog: Catalog; onLoaded: () => void; onLeave: () => void; onLobby: () => void };
 type Feed = { id: number; text: string; tone: 'ally' | 'enemy' | 'neutral'; at: number };
@@ -31,6 +32,8 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
   const [banner, setBanner] = useState<{ text: string; tone: string; at: number } | null>(null);
   const [toast, setToast] = useState<{ text: string; at: number } | null>(null);
   const [ready, setReady] = useState(false);
+  const myKills = useRef<number[]>([]);
+  const anyKill = useRef(false);
   const myHero = client.init.heroes.find(h => h.playerId === client.init.you)!;
   const def: HeroDef = useMemo(() => catalog.heroes.find(h => h.id === myHero.hero)!, [catalog, myHero.hero]);
   const duel = client.map.type === 'duel';
@@ -44,10 +47,11 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
     inputRef.current = input;
     input.attach(canvas);
     input.onError = e => {
-      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!', wait: 'Wait for the round to start', sight: 'Not in sight — something is in the way' };
+      const words: Record<string, string> = { cooldown: 'Not ready yet', mana: `Not enough ${def.resource.toLowerCase()}`, target: 'No target in range', locked: `Unlocks at level ${catalog.ultLevel}`, busy: 'Can’t do that now', rooted: 'Rooted!', wait: 'Wait for the round to start', sight: 'Not in sight — something is in the way', unlearned: 'Not learned yet — you get a spell point every level', points: 'No spell point left — level up first', picked: 'Already picked for this round' };
       if (words[e]) { setToast({ text: words[e], at: performance.now() }); sfx.play('nope'); }
     };
-    input.onUpgradeKey = () => setBook(b => !b);
+    input.onUpgradeKey = () => { if (!duel) setBook(b => !b); };
+    input.onLearn = slot => { sfx.play('learn'); setBanner({ text: `Learned ${def.abilities[slot].name}!`, tone: 'good', at: performance.now() }); };
     input.onScoreKey = down => setBoard(down);
     r.onFx = f => onFx(f);
     // Give the browser a frame to show the loading screen before the bake.
@@ -82,7 +86,15 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
         const victim = nameOf(f.u2);
         push(`${killer} defeated ${victim}`, f.tm === team ? 'ally' : 'enemy');
         if (f.u2 === client.me?.u) say('You were defeated', 'bad');
-        else if (f.u === client.me?.u) { say(`You defeated ${victim}!`, 'good'); sfx.play('crit'); }
+        else if (f.u === client.me?.u) {
+          // Kills close together make a streak.
+          const at = performance.now();
+          myKills.current = [...myKills.current.filter(k => at - k < 10000), at];
+          const n = myKills.current.length;
+          say(n >= 3 ? 'Triple kill!' : n === 2 ? 'Double kill!' : !anyKill.current && !duel ? 'First blood!' : `You defeated ${victim}!`, 'good');
+          sfx.play(n >= 2 ? 'roar' : 'crit');
+        }
+        anyKill.current = true;
         break;
       }
       case 'struct': {
@@ -103,7 +115,12 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
         if (f.k && words[f.k]) say(words[f.k], f.k === 'blessed' ? (f.tm === team ? 'good' : 'bad') : 'info');
         break;
       }
-      case 'lvl': if (f.u === client.me?.u && f.v === catalog.ultLevel && !duel) say(`Ultimate unlocked: ${def.abilities[4].name}!`, 'good'); break;
+      case 'lvl':
+        if (f.u === client.me?.u && !duel) {
+          say(f.v === catalog.ultLevel ? `Level ${f.v} — learn your ultimate: ${def.abilities[4].name}!` : (f.v ?? 0) < catalog.ultLevel ? `Level ${f.v} — learn a new spell!` : `Level ${f.v}!`, 'good');
+          sfx.play('levelUp');
+        }
+        break;
       case 'round':
         if (f.k === 'start') say(f.v && f.v > 1 ? `Round ${f.v} · everyone grows a level` : `Round ${f.v}`, 'info');
         else if (f.k === 'fight') { say('Fight!', 'good'); }
@@ -128,15 +145,8 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
   const anyBuy = [0, 1, 2, 3, 4].some(canBuy);
   const now = performance.now();
 
-  // Duels: open the Spellbook by itself while the fighting is paused (before a round, and between rounds), and close it
-  // again when the round starts if it opened by itself.
-  const phase = duel && state === 'PLAYING' ? snap?.rp ?? -1 : -1;
-  const autoBook = useRef(false);
-  useEffect(() => {
-    if ((phase === 0 || phase === 2) && anyBuy && !book) { autoBook.current = true; setBook(true); }
-    if (phase === 1 && autoBook.current) { autoBook.current = false; setBook(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  const [leaving, setLeaving] = useState(false);
+  const picking = duel && state === 'PLAYING' && snap?.rp === 0 && !!me && me.dq.length > 0;
 
   return (
     <div className="match">
@@ -167,7 +177,7 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
         <div className="hud-buttons">
           <button className="icon-btn card" onClick={() => setBoard(b => !b)} title="Scoreboard (Tab)">☰</button>
           <button className="icon-btn card" onClick={() => { const m = !sfx.isMuted(); sfx.setMuted(m); setTick(t => t + 1); }} title="Sound">{sfx.isMuted() ? '🔇' : '🔊'}</button>
-          <button className="icon-btn card" onClick={() => { if (confirm('Leave the match? A bot will take over your hero.')) onLeave(); }} title="Leave">⏏</button>
+          <button className="icon-btn card" onClick={() => setLeaving(true)} title="Leave">⏏</button>
           <span className="ping">{net.ping} ms</span>
         </div>
       </div>
@@ -189,26 +199,46 @@ export function MatchView({ state, client, room, result, catalog, onLoaded, onLe
             <div className="bar mp"><i style={{ width: `${me.mp / me.mm * 100}%` }} /><b>{me.mp} {def.resource}</b></div>
             <div className="bar xp"><i style={{ width: `${me.xn ? me.xp / me.xn * 100 : 100}%` }} /></div>
           </div>
-          <button className={`gold-btn ${anyBuy ? 'can' : ''}`} onClick={() => setBook(b => !b)} title="Spell upgrades (B)">
-            <span>◉ {gold}</span><small>{anyBuy ? 'Upgrade!' : 'Upgrades'}</small>
-          </button>
+          {!duel && (
+            <button className={`gold-btn ${anyBuy ? 'can' : ''}`} onClick={() => setBook(b => !b)} title="Spell upgrades (B)">
+              <span>◉ {gold}</span><small>{anyBuy ? 'Upgrade!' : 'Upgrades'}</small>
+            </button>
+          )}
         </div>
       )}
 
       {/* Bottom right: attack and abilities */}
       {me && <Abilities def={def} me={me} input={inputRef} catalog={catalog} />}
+      {me && !duel && me.lp > 0 && state === 'PLAYING' && !dead && (
+        <div className="learn-hint" key={me.lv}>✦ {coarse ? 'Tap a glowing spell to learn it' : 'Click a glowing spell (or press its key) to learn it'}{me.lp > 1 ? ` · ${me.lp} points` : ''}</div>
+      )}
 
-      {dead && state === 'PLAYING' && !duel && <div className="respawn"><b>Respawning in {Math.ceil(me?.rs ?? 0)}</b><small>Spend your gold on upgrades while you wait.</small></div>}
+      {dead && state === 'PLAYING' && !duel && <div className="respawn"><b>Respawning in {Math.ceil(me?.rs ?? 0)}</b><small>Spend your gold in the Spellbook while you wait.</small></div>}
       {dead && state === 'PLAYING' && duel && snap?.rp === 1 && <div className="respawn"><b>Knocked out</b><small>Cheer on your team — you're back next round.</small></div>}
-      {duel && state === 'PLAYING' && snap?.rp === 0 && !book && (
+      {picking && me && snap && <DuelPicks def={def} me={me} round={snap.rd} timeLeft={snap.rt} maxHp={myUnit?.mh ?? 0} />}
+      {duel && state === 'PLAYING' && snap?.rp === 0 && !picking && (
         <div className="overlay countdown round">
           <small>Round {snap.rd} · <span style={{ color: TEAM_COLOR[mine] }}>{snap.rw[mine - 1]}</span> – <span style={{ color: TEAM_COLOR[theirs] }}>{snap.rw[theirs - 1]}</span></small>
           <b key={Math.ceil(snap.rt)}>{Math.max(1, Math.ceil(snap.rt))}</b>
           <p>Get ready!</p>
+          {me && <span className="round-picks">{def.duelSlots.map(sl => <em key={sl}>{HEROES[def.id as HeroId].abilities[def.abilities[sl].id]?.icon} {def.abilities[sl].name} {'★'.repeat(me.up[sl]?.length ?? 0)}</em>)}</span>}
         </div>
       )}
-      {book && me && <UpgradeBook def={def} me={me} catalog={catalog} onClose={() => setBook(false)}
-        note={duel && snap && snap.rp !== 1 && state === 'PLAYING' ? `${snap.rp === 0 ? 'Round starts' : 'Next round'} in ${Math.ceil(snap.rt)}s` : undefined} />}
+      {book && me && !duel && <UpgradeBook def={def} me={me} catalog={catalog} maxHp={myUnit?.mh ?? 0} onClose={() => setBook(false)} />}
+      {leaving && (
+        <div className="modal-wrap">
+          <Fit onBackdrop={() => setLeaving(false)}>
+            <div className="confirm parchment">
+              <h3>Leave the match?</h3>
+              <p>A bot will take over your hero for the rest of the {duel ? 'duel' : 'battle'}.</p>
+              <div className="confirm-actions">
+                <button className="btn" onClick={() => setLeaving(false)}>Stay</button>
+                <button className="btn danger" onClick={() => { setLeaving(false); onLeave(); }}>Leave match</button>
+              </div>
+            </div>
+          </Fit>
+        </div>
+      )}
       {board && <Scoreboard client={client} onClose={() => setBoard(false)} />}
 
       {state === 'LOADING' && (
@@ -257,22 +287,24 @@ function Abilities({ def, me, input, catalog }: { def: HeroDef; me: NonNullable<
       </button>
       {[1, 2, 3, 4].map(slot => {
         const a = def.abilities[slot], l = look.abilities[a.id];
-        const cd = me.cd[slot], max = me.cm[slot] || 1, locked = slot === 4 && me.lv < catalog.ultLevel, poor = me.mp < me.mc[slot];
-        return <AbilityButton key={slot} slot={slot} name={a.name} icon={l?.icon} color={l?.color} cd={cd} max={max} locked={locked} poor={poor} cost={me.mc[slot]} stars={me.up[slot]?.length ?? 0} input={input} />;
+        const learned = !!(me.ln & (1 << slot));
+        const learnable = !learned && me.lp > 0 && (slot !== 4 || me.lv >= catalog.ultLevel);
+        const cd = me.cd[slot], max = me.cm[slot] || 1, poor = learned && me.mp < me.mc[slot];
+        return <AbilityButton key={slot} slot={slot} name={a.name} icon={l?.icon} color={l?.color} cd={learned ? cd : 0} max={max} learned={learned} learnable={learnable} poor={poor} cost={learned ? me.mc[slot] : 0} stars={me.up[slot]?.length ?? 0} input={input} />;
       })}
     </div>
   );
 }
 
-function AbilityButton({ slot, name, icon, color, cd, max, locked, poor, cost, stars, input }: { slot: number; name: string; icon?: string; color?: string; cd: number; max: number; locked: boolean; poor: boolean; cost: number; stars: number; input: React.RefObject<Input | null> }) {
+function AbilityButton({ slot, name, icon, color, cd, max, learned, learnable, poor, cost, stars, input }: { slot: number; name: string; icon?: string; color?: string; cd: number; max: number; learned: boolean; learnable: boolean; poor: boolean; cost: number; stars: number; input: React.RefObject<Input | null> }) {
   const origin = useRef<{ x: number; y: number } | null>(null);
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const reach = 70;
   return (
     <button
-      className={`ability a${slot} ${cd > 0 ? 'cooling' : ''} ${locked ? 'locked' : ''} ${poor ? 'poor' : ''}`}
+      className={`ability a${slot} ${cd > 0 ? 'cooling' : ''} ${learned ? '' : 'unlearned'} ${learnable ? 'learnable' : ''} ${poor ? 'poor' : ''}`}
       style={{ ['--c' as string]: color, ['--cd' as string]: `${Math.min(1, cd / max) * 360}deg` }}
-      title={name}
+      title={learnable ? `Learn ${name}` : name}
       onPointerDown={e => {
         e.preventDefault();
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -288,7 +320,8 @@ function AbilityButton({ slot, name, icon, color, cd, max, locked, poor, cost, s
       onPointerUp={() => { origin.current = null; setDrag(null); input.current?.endAim(false); }}
       onPointerCancel={() => { origin.current = null; setDrag(null); input.current?.endAim(true); }}
     >
-      <span className="ab-icon">{locked ? '🔒' : icon}</span>
+      <span className="ab-icon">{icon}</span>
+      {learnable && <span className="ab-learn">+</span>}
       {cd > 0 && <span className="ab-cd">{cd >= 1 ? Math.ceil(cd) : cd.toFixed(1)}</span>}
       {cost > 0 && <span className="ab-cost">{cost}</span>}
       {stars > 0 && <span className="ab-stars">{'★'.repeat(stars)}</span>}
@@ -324,12 +357,12 @@ function Joystick({ input }: { input: React.RefObject<Input | null> }) {
 
 // ───────────────────────────── upgrade book
 
-function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: NonNullable<MatchClient['me']>; catalog: Catalog; note?: string; onClose: () => void }) {
+function UpgradeBook({ def, me, catalog, maxHp, onClose }: { def: HeroDef; me: NonNullable<MatchClient['me']>; catalog: Catalog; maxHp: number; onClose: () => void }) {
   const look = HEROES[def.id as HeroId];
   const [err, setErr] = useState('');
   const buy = async (slot: number, choice: number) => {
     const e = await net.upgrade(slot, choice);
-    if (e) { setErr(e === 'gold' ? 'Not enough gold.' : e === 'locked' ? `The ultimate unlocks at level ${catalog.ultLevel}.` : e); sfx.play('nope'); }
+    if (e) { setErr(e === 'gold' ? 'Not enough gold.' : e === 'locked' ? `The ultimate unlocks at level ${catalog.ultLevel}.` : e === 'unlearned' ? 'Learn that spell first (one per level).' : e); sfx.play('nope'); }
     else { setErr(''); sfx.play('learn'); }
   };
   return (
@@ -338,7 +371,6 @@ function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: No
         <div className="book parchment">
           <header>
             <h3>Spellbook</h3>
-            {note && <span className="book-note">{note}</span>}
             <span className="gold">◉ {me.g}</span>
             <button className="close" onClick={onClose}>✕</button>
           </header>
@@ -349,7 +381,7 @@ function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: No
               const costs = slot === 0 ? catalog.basicCost : slot === 4 ? catalog.ultCost : catalog.abilityCost;
               const picks = me.up[slot] ?? [];
               const tier = picks.length;
-              const locked = slot === 4 && me.lv < catalog.ultLevel;
+              const locked = !(me.ln & (1 << slot));
               const l = look.abilities[a.id];
               return (
                 <div key={slot} className="book-row">
@@ -365,10 +397,10 @@ function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: No
                   </div>
                   <div className="book-next">
                     {tier >= tiers.length ? <span className="book-done">★ Mastered</span>
-                      : locked ? <span className="book-done">Unlocks at level {catalog.ultLevel}</span>
+                      : locked ? <span className="book-done">{slot === 4 && me.lv < catalog.ultLevel ? `Learn it from level ${catalog.ultLevel}` : 'Learn this spell first'}</span>
                       : tiers[tier].map((o, choice) => (
                         <button key={o.id} className={`opt ${me.g >= costs[tier] ? 'can' : ''}`} onClick={() => buy(slot, choice)}>
-                          <b>{o.name} <em>{costs[tier]}g</em></b><small>{o.text}</small>
+                          <b>{o.name} <em>{costs[tier]}g</em></b><small>{changeText(describeUpgrade(def, me, slot, o.id, maxHp)) || o.text}</small>
                         </button>
                       ))}
                   </div>
@@ -378,6 +410,79 @@ function UpgradeBook({ def, me, catalog, note, onClose }: { def: HeroDef; me: No
           </div>
         </div>
       </Fit>
+    </div>
+  );
+}
+
+const changeText = (cs: { label: string; from: string; to: string }[]) => cs.map(c => `${c.label} ${c.from} → ${c.to}`).join(' · ');
+
+/** Duels, before each round: a free upgrade for each of the hero's two duel spells, with what it changes in numbers. */
+function DuelPicks({ def, me, round, timeLeft, maxHp }: { def: HeroDef; me: NonNullable<MatchClient['me']>; round: number; timeLeft: number; maxHp: number }) {
+  const look = HEROES[def.id as HeroId];
+  const [busy, setBusy] = useState(false);
+  const pick = async (slot: number, choice: number) => {
+    if (busy) return;
+    setBusy(true);
+    const e = await net.upgrade(slot, choice);
+    setBusy(false);
+    sfx.play(e ? 'nope' : 'learn');
+  };
+  const secs = Math.max(0, Math.ceil(timeLeft));
+  return (
+    <div className="picks-wrap">
+      <Fit>
+        <div className="picks">
+          <header className="picks-head">
+            <div>
+              <small>Round {round} · free upgrades</small>
+              <h2>Power up your two duel spells</h2>
+              <p>Pick one path for each. They last for the rest of the duel, and can win it.</p>
+            </div>
+            <div className={`picks-time ${secs <= 5 ? 'hurry' : ''}`}><b>{secs}</b><small>seconds</small></div>
+          </header>
+          <div className="picks-cards">
+            {def.duelSlots.map(slot => {
+              const a = def.abilities[slot], l = look.abilities[a.id];
+              const picks = me.up[slot] ?? [];
+              const waiting = me.dq.includes(slot);
+              return (
+                <section key={slot} className={`pick-card ${waiting ? '' : 'done'}`} style={{ ['--c' as string]: l?.color }}>
+                  <div className="pick-card-head">
+                    <span className="ab-icon">{l?.icon}</span>
+                    <div>
+                      <b>{a.name}</b>
+                      <small>{KEY_LABELS[slot]}{slot === 0 ? ' · basic attack' : ''} · upgrade {Math.min(3, picks.length + (waiting ? 1 : 0))} of 3</small>
+                    </div>
+                  </div>
+                  <p className="pick-card-text">{l?.text}</p>
+                  {waiting ? <PickOptions def={def} me={me} slot={slot} maxHp={maxHp} onPick={c => pick(slot, c)} /> : <div className="pick-card-done">✓ {(slot === 0 ? net.catalog?.basicTiers : net.catalog?.abilityTiers)?.[picks.length - 1]?.find(o => o.id === picks[picks.length - 1])?.name ?? 'Ready'}<small>chosen for this round</small></div>}
+                </section>
+              );
+            })}
+          </div>
+          <p className="picks-foot">{me.dq.length === 2 ? 'Choose both before the time runs out — otherwise the left path is picked for you.' : 'One more to go!'}</p>
+        </div>
+      </Fit>
+    </div>
+  );
+}
+
+function PickOptions({ def, me, slot, maxHp, onPick }: { def: HeroDef; me: NonNullable<MatchClient['me']>; slot: number; maxHp: number; onPick: (choice: number) => void }) {
+  const cat = net.catalog!;
+  const tiers = slot === 0 ? cat.basicTiers : cat.abilityTiers;
+  const tier = me.up[slot]?.length ?? 0;
+  const opts = tiers[tier] ?? [];
+  return (
+    <div className="pick-opts">
+      {opts.map((o, choice) => {
+        const changes = describeUpgrade(def, me, slot, o.id, maxHp);
+        return (
+          <button key={o.id} className="pick-opt" onClick={() => onPick(choice)}>
+            <b>{o.name}</b>
+            <ul>{changes.length ? changes.map(c => <li key={c.label}><span>{c.label}</span><em>{c.from}</em><i>→</i><strong>{c.to}</strong></li>) : <li><span>{o.text}</span></li>}</ul>
+          </button>
+        );
+      })}
     </div>
   );
 }

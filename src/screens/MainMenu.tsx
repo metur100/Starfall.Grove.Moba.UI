@@ -97,10 +97,10 @@ export function MainMenu({ status, catalog, initialCode, onJoined, onRetry }: Pr
               <header><h3>How to play</h3><button className="close" onClick={() => setHelp(false)}>✕</button></header>
               <ul className="howto">
                 <li><b>Battle:</b> destroy the enemy <b>Core</b>. Every lane has two towers; the Core opens up once one lane's inner tower falls. <b>Minions</b> march every 25 seconds — let them soak the tower's shots.</li>
-                <li><b>Duel:</b> heroes only. Knock out the other side to win a round; first to 3 rounds wins. Everyone grows a level each round. Late in a round a ring of starfire closes in.</li>
+                <li><b>Duel:</b> heroes only, no gold. Before each round you pick a free upgrade for each of your hero's two duel spells. Knock out the other side to win a round; first to 3 rounds wins.</li>
                 <li><b>Stones and trees</b> block sight: no attacks, shots or targeted spells through them. Hide behind one!</li>
                 <li><b>Move</b> with WASD / right-click (PC) or the thumbstick (phone). <b>Attack</b> with Space / left mouse, or by standing still near an enemy.</li>
-                <li><b>Abilities:</b> Q E R F (PC) or tap a button to auto-aim; drag it to aim yourself. The ultimate (F) unlocks at level {catalog?.ultLevel ?? 3}.</li>
+                <li><b>Abilities:</b> Q E R F (PC) or tap a button to auto-aim; drag it to aim yourself. In a battle you learn one spell per level — tap a glowing one; the ultimate (F) from level {catalog?.ultLevel ?? 4}.</li>
                 <li><b>Gold</b> buys spell upgrades in the <b>Spellbook</b> (B or the gold button): every step is a choice between two paths.</li>
               </ul>
             </div>

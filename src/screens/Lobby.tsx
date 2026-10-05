@@ -48,7 +48,11 @@ export function Lobby({ room, catalog, onLeave }: Props) {
             const players = room.players.filter(p => p.team === team);
             return (
               <section key={team} className={`team-col t${team} parchment`}>
-                <h3>{team === 1 ? 'Blue team' : 'Red team'}</h3>
+                <h3>
+                  {team === 1 ? 'Blue team' : 'Red team'}
+                  {me && me.team !== team && !full(team) && <button className="link" onClick={() => act(net.switchTeam())}>Switch here</button>}
+                  {me && me.team !== team && full(team) && players.some(p => p.bot) && <button className="link" onClick={() => act(net.switchTeam())}>Swap with a bot</button>}
+                </h3>
                 {players.map(p => (
                   <div key={p.id} className={`seat ${p.id === room.you ? 'me' : ''} ${!p.connected ? 'off' : ''}`}>
                     <span className="seat-name">{p.id === room.hostId ? '♛ ' : ''}{p.name}{p.id === room.you ? ' (you)' : ''}</span>
@@ -62,8 +66,8 @@ export function Lobby({ room, catalog, onLeave }: Props) {
                     {host && <button className="link" onClick={() => act(net.addBot(team))}>+ Add bot</button>}
                   </div>
                 ))}
-                {me && me.team !== team && !full(team) && <button className="link" onClick={() => act(net.switchTeam())}>Switch to this team</button>}
-                {me && me.team !== team && full(team) && players.some(p => p.bot) && <button className="link" onClick={() => act(net.switchTeam())}>Swap with a bot</button>}
+                {/* Always three rows, so the lobby keeps its size when the mode changes. */}
+                {Array.from({ length: Math.max(0, 3 - Math.max(room.mode, players.length)) }, (_, i) => <div key={`g${i}`} className="seat ghost" aria-hidden />)}
               </section>
             );
           })}

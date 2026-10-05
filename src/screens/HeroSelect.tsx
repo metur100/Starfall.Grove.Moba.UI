@@ -71,7 +71,7 @@ export function HeroSelect({ room, catalog }: Props) {
                   <li key={a.id} style={{ ['--c' as string]: l?.color }}>
                     <span className="ab-icon">{l?.icon}</span>
                     <div>
-                      <b>{a.name} <kbd>{KEY_LABELS[slot]}</kbd>{slot === 4 && <em> Ultimate · level {catalog.ultLevel}</em>}{slot === 0 && <em> Basic attack</em>}</b>
+                      <b>{a.name} <kbd>{KEY_LABELS[slot]}</kbd>{slot === 4 && <em> Ultimate · level {catalog.ultLevel}</em>}{slot === 0 && <em> Basic attack</em>}{room.type === 'duel' && def.duelSlots.includes(slot) && <em className="duel-tag"> ★ duel upgrade</em>}</b>
                       <p>{l?.text}</p>
                       {slot > 0 && <small>{a.cooldown}s cooldown · {a.cost} {def.resource.toLowerCase()}{a.range ? ` · range ${a.range}` : ''}</small>}
                     </div>
