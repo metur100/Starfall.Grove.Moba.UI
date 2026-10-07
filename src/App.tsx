@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { net, type NetStatus } from './net/connection';
-import type { MatchEnd, RoomView } from './net/protocol';
+import type { MatchEnd, MatchFound, MatchType, Profile, QueueStatus, Rewards, RoomView } from './net/protocol';
 import { transition, type GameState } from './state/machine';
 import { MatchClient } from './game/client';
 import { sfx } from './game/audio';
-import { MainMenu } from './screens/MainMenu';
+import { Home } from './screens/Home';
 import { Lobby } from './screens/Lobby';
 import { HeroSelect } from './screens/HeroSelect';
 import { MatchView } from './screens/MatchView';
+import { MatchFoundDialog, QueuePill } from './ui/Queue';
 
 const MATCH_STATES: GameState[] = ['LOADING', 'MATCH_START', 'PLAYING', 'VICTORY', 'DEFEAT'];
 
@@ -32,7 +33,11 @@ export default function App() {
   const clientRef = useRef<MatchClient | null>(null);
   const [result, setResult] = useState<MatchEnd | null>(null);
   const resultRef = useRef<MatchEnd | null>(null);
+  const [rewards, setRewards] = useState<Rewards | null>(null);
   const [catalog, setCatalog] = useState(net.catalog);
+  const [profile, setProfile] = useState<Profile | null>(net.profile);
+  const [queue, setQueue] = useState<QueueStatus>(net.queue);
+  const [found, setFound] = useState<MatchFound | null>(null);
   const initialCode = new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '';
 
   /** Which screen a room's phase belongs on. */
@@ -47,7 +52,7 @@ export default function App() {
       case 'ended': {
         const res = resultRef.current;
         if (c && res) go(res.winner === c.team ? 'VICTORY' : 'DEFEAT');
-        else if (!c) go('LOBBY');
+        else if (!c) go(r.matchmade ? 'MAIN_MENU' : 'LOBBY');
         break;
       }
     }
@@ -59,11 +64,11 @@ export default function App() {
         setStatus(s);
         if ((s === 'reconnecting' || s === 'disconnected') && stateRef.current !== 'MAIN_MENU') go('DISCONNECTED');
       }),
-      net.on('room', r => { roomRef.current = r; setRoom(r); follow(r); }),
+      net.on('room', r => { roomRef.current = r; setRoom(r); setFound(null); follow(r); }),
       net.on('matchStart', init => {
         const c = new MatchClient(init);
         clientRef.current = c; setClient(c);
-        resultRef.current = null; setResult(null);
+        resultRef.current = null; setResult(null); setRewards(null);
         go('LOADING');
         // Reconnecting mid-match: the room is already past loading.
         const r = roomRef.current;
@@ -75,9 +80,13 @@ export default function App() {
         const c = clientRef.current;
         if (c) go(res.winner === c.team ? 'VICTORY' : 'DEFEAT');
       }),
+      net.on('rewards', setRewards),
+      net.on('profile', setProfile),
+      net.on('queue', q => { setQueue(q); if (q.state !== 'found') setFound(null); }),
+      net.on('matchFound', setFound),
     ];
     void (async () => {
-      if (await net.connect()) { setCatalog(net.catalog); await net.rejoin(); }
+      if (await net.connect()) { setCatalog(net.catalog); setProfile(net.profile); await net.rejoin(); }
     })();
     return () => offs.forEach(o => o());
   }, [follow, go]);
@@ -88,26 +97,30 @@ export default function App() {
     return () => window.removeEventListener('pointerdown', unlock);
   }, []);
 
-  const retry = async () => { if (await net.connect()) { setCatalog(net.catalog); const r = await net.rejoin(); if (!r?.ok && stateRef.current === 'DISCONNECTED') go('MAIN_MENU'); } };
+  const retry = async () => { if (await net.connect()) { setCatalog(net.catalog); setProfile(net.profile); const r = await net.rejoin(); if (!r?.ok && stateRef.current === 'DISCONNECTED') go('MAIN_MENU'); } };
   const leave = async () => {
     await net.leave();
-    clientRef.current = null; setClient(null); setRoom(null); setResult(null); resultRef.current = null;
+    clientRef.current = null; setClient(null); setRoom(null); setResult(null); resultRef.current = null; setRewards(null);
     go('MAIN_MENU');
   };
+  /** After a match: straight back into the queue for the same kind of game. */
+  const playAgain = async (type: MatchType, mode: number) => { await leave(); await net.findMatch(type, mode); };
 
   const inMatch = client && catalog && (MATCH_STATES.includes(state) || (state === 'DISCONNECTED' && clientRef.current));
   return (
     <div className="app">
-      {state === 'MAIN_MENU' && <MainMenu status={status} catalog={catalog} initialCode={initialCode} onJoined={() => { /* the room message moves us on */ }} onRetry={retry} />}
+      {state === 'MAIN_MENU' && <Home status={status} catalog={catalog} profile={profile} queue={queue} initialCode={initialCode} onRetry={retry} />}
       {state === 'LOBBY' && room && <Lobby room={room} catalog={catalog} onLeave={leave} />}
-      {state === 'HERO_SELECT' && room && catalog && <HeroSelect room={room} catalog={catalog} />}
+      {state === 'HERO_SELECT' && room && catalog && <HeroSelect room={room} catalog={catalog} profile={profile} />}
       {inMatch && (
         <MatchView
           key={client.init.you + client.init.map.id + client.init.heroes.map(h => h.u).join()}
-          state={state} client={client} room={room} result={result} catalog={catalog}
-          onLoaded={() => void net.loaded()} onLeave={leave} onLobby={() => void net.backToLobby()}
+          state={state} client={client} room={room} result={result} rewards={rewards} catalog={catalog}
+          onLoaded={() => void net.loaded()} onLeave={leave} onLobby={() => void net.backToLobby()} onPlayAgain={playAgain}
         />
       )}
+      {(state === 'MAIN_MENU' || state === 'LOBBY') && <QueuePill queue={queue} />}
+      {found && queue.state === 'found' && !inMatch && <MatchFoundDialog found={found} />}
       <div className="rotate-hint"><b>⟳</b><p>Turn your phone sideways to play</p></div>
       {state === 'DISCONNECTED' && (
         <div className="overlay disconnected">

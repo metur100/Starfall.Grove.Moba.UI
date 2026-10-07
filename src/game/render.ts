@@ -1,7 +1,9 @@
 import { TAU, alpha, circle, ellipse, mix, rrect, shade, star } from './art/color';
 import { BOSS, Cutter, INK, SCENERY, STICKER, type Baked, type CutStyle } from './art/cutout';
-import { drawFigure, facingOf, FIGURE_BOX, type ArmAction, type Joints } from './art/rig';
-import { heroFigure, heroHooks, staffTip } from './art/heroes';
+import { drawFigure, facingOf, FIGURE_BOX, type ArmAction, type Figure, type Joints } from './art/rig';
+import { heroHooks, staffTip } from './art/heroes';
+import { skinFigure, skinGear, skinLook, type SkinLook } from './skins';
+import { prefs } from './settings';
 import { paintProp, propShadow } from './art/props';
 import { paintDecor, paving, sheet, strip } from './art/ground';
 import { paintWolf } from './art/animals';
@@ -9,12 +11,17 @@ import * as CR from './art/creatures';
 import { sfx, type Sfx } from './audio';
 import { ST, type Fx } from '../net/protocol';
 import type { MatchClient, ViewUnit } from './client';
-import type { Obstacle, ObstacleKind, Palette } from './types';
+import type { HeroId, Look, Obstacle, ObstacleKind, Palette } from './types';
 import { HEROES, isHero } from './heroes';
 
 // Draws a match in Starfall Grove's storybook style: the baked battlefield, everything standing on it sorted by depth
 // (paper puppets for heroes, the valley's own creatures for minions and monsters), then projectiles, spell effects,
 // health and cast bars and numbers.
+//
+// Heroes move like puppets on a stage: they lean into a walk and kick up dust, lunge into a sword blow and recoil from
+// a shot, squash a little on every strike, crouch over a rune while a spell winds up, leave afterimages when they dash,
+// topple when they fall and pop back up when they return. Skins recolour the puppet and add an aura and trail. Big
+// moments (your kill, your critical hit) hold the frame for an instant and punch the camera in.
 //
 // Speed: the ground and scenery are baked once; every creature animation frame is baked once and reused; each hero
 // is re-cut only a limited number of times a second (more often for your own hero, and on stronger devices); glows
@@ -70,6 +77,20 @@ export class Renderer {
   private bakes = new Map<string, Baked>();
   private mobs = new Map<string, { b: Baked; glows: CR.GlowMark[] }>();
   private heroes = new Map<number, { b: Baked | null; at: number; joints: Joints | null; k: number }>();
+  /** Each hero's look: the skinned figure, its weapon, and the skin's aura and trail. */
+  private looks = new Map<number, { fig: Figure; gear: Look; skin: SkinLook | null }>();
+  /** When each unit last died or came back (for the fall and the pop), and whether it is down now. */
+  private life = new Map<number, { dead: boolean; at: number }>();
+  /** Recent positions of dashing heroes, for afterimages. */
+  private echoes = new Map<number, Array<{ x: number; y: number; t: number }>>();
+  private nextStep = new Map<number, number>();
+  /** Recalls under way: when they started and how long they take. */
+  private recalls = new Map<number, { at: number; dur: number }>();
+  /** What your hero last attacked, for the ring under it. */
+  private myTarget = { id: 0, at: -9 };
+  /** A brief freeze of everything but the camera (hit-stop), and the camera's punch-in. */
+  private hitstop = 0;
+  private zoom = 0;
   private cutter = new Cutter();
   private particles: Particle[] = [];
   private rings: Ring[] = [];
@@ -99,7 +120,7 @@ export class Renderer {
     this.client = client;
     this.g = canvas.getContext('2d')!;
     this.theme = THEMES[client.map.theme] || THEMES.meadow;
-    const small = Math.min(window.innerWidth, window.innerHeight) < 700 || (navigator.hardwareConcurrency || 8) <= 4;
+    const small = !prefs.rich();
     this.quality = small ? .6 : 1;
     this.cutter.quality = small ? .5 : 1;
     this.groundRes = small ? .5 : .65;
@@ -146,7 +167,9 @@ export class Renderer {
     this.cam.scale = this.w >= this.h ? Math.min(this.w / 1000, this.h / 540) : Math.min(this.w / 600, this.h / 1000);
   }
 
-  screenToWorld(px: number, py: number) { return { x: (px - this.w / 2) / this.cam.scale + this.cam.x, y: (py - this.h / 2) / this.cam.scale + this.cam.y }; }
+  /** World-to-screen scale including the camera's punch-in. */
+  private get scale() { return this.cam.scale * (1 + this.zoom); }
+  screenToWorld(px: number, py: number) { return { x: (px - this.w / 2) / this.scale + this.cam.x, y: (py - this.h / 2) / this.scale + this.cam.y }; }
 
   // ───────────────────────────── baking the battlefield
 
@@ -228,16 +251,32 @@ export class Renderer {
 
   // ───────────────────────────── the frame
 
-  frame(dt: number) {
+  /** The ally the camera follows while you are knocked out of a duel round. */
+  spectating: number = 0;
+
+  frame(realDt: number) {
     if (!this.ready) return;
-    this.t += dt;
+    // Hit-stop: effects nearly freeze for a moment. The clock itself follows the match client's, which stamps every
+    // attack and cast, so animations stay in step with it.
+    let dt = realDt;
+    if (this.hitstop > 0) { this.hitstop -= realDt; dt *= .15; }
+    this.zoom *= Math.pow(.004, realDt);
+    this.t = this.client.now;
     const g = this.g, C = this.client, me = C.myUnit();
     this.consumeFx();
-    const focus = me ? { x: me.rx, y: me.ry } : { x: C.map.spawn[C.team][0], y: C.map.spawn[C.team][1] };
+    for (const u of C.units.values()) this.trackLife(u);
+    // Knocked out of a duel round: watch a teammate who is still fighting.
+    this.spectating = 0;
+    if (me && me.st & ST.dead && this.duel) {
+      const ally = [...C.units.values()].find(u => isHero(u.k) && u.tm === C.team && u.i !== me.i && !(u.st & ST.dead));
+      if (ally) this.spectating = ally.i;
+    }
+    const watched = this.spectating ? C.units.get(this.spectating) : me;
+    const focus = watched ? { x: watched.rx, y: watched.ry } : { x: C.map.spawn[C.team][0], y: C.map.spawn[C.team][1] };
     if (!this.cam.x) { this.cam.x = focus.x; this.cam.y = focus.y; }
-    const k = Math.min(1, dt * 9);
+    const k = Math.min(1, realDt * 9);
     this.cam.x += (focus.x - this.cam.x) * k; this.cam.y += (focus.y - 24 - this.cam.y) * k;
-    const halfW = this.w / 2 / this.cam.scale, halfH = this.h / 2 / this.cam.scale;
+    const halfW = this.w / 2 / this.scale, halfH = this.h / 2 / this.scale;
     this.cam.x = halfW * 2 > C.map.w ? C.map.w / 2 : Math.max(halfW, Math.min(C.map.w - halfW, this.cam.x));
     this.cam.y = halfH * 2 > C.map.h ? C.map.h / 2 : Math.max(halfH, Math.min(C.map.h - halfH, this.cam.y));
     sfx.setListener(this.cam.x, this.cam.y);
@@ -246,8 +285,8 @@ export class Renderer {
 
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.fillStyle = '#1d1520'; g.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    const s = this.cam.scale * this.dpr;
-    g.setTransform(s, 0, 0, s, (this.w / 2 - this.cam.x * this.cam.scale + shake) * this.dpr, (this.h / 2 - this.cam.y * this.cam.scale) * this.dpr);
+    const sc = this.scale, s = sc * this.dpr;
+    g.setTransform(s, 0, 0, s, (this.w / 2 - this.cam.x * sc + shake) * this.dpr, (this.h / 2 - this.cam.y * sc) * this.dpr);
     const view = { x0: this.cam.x - halfW - 120, x1: this.cam.x + halfW + 120, y0: this.cam.y - halfH - 80, y1: this.cam.y + halfH + 240 };
     const inView = (x: number, y: number) => x > view.x0 && x < view.x1 && y > view.y0 && y < view.y1;
 
@@ -261,7 +300,11 @@ export class Renderer {
     for (const p of this.props) if (inView(p.o.x, p.o.y)) draws.push({ y: p.o.y, run: () => g.drawImage(p.b.c, p.o.x + p.b.l, p.o.y + p.b.t, p.b.w, p.b.h) });
     for (const u of C.units.values()) {
       if (!inView(u.rx, u.ry)) continue;
-      if (u.st & ST.dead && u.k !== 'tower' && u.k !== 'core') continue;
+      if (u.st & ST.dead && u.k !== 'tower' && u.k !== 'core') {
+        // A fallen hero topples and fades before it is gone.
+        if (isHero(u.k) && this.t - (this.life.get(u.i)?.at ?? -9) < 1.6) draws.push({ y: u.ry, run: () => this.drawDeath(g, u) });
+        continue;
+      }
       draws.push({ y: u.ry, run: () => this.drawUnit(g, u) });
     }
     draws.sort((a, b) => a.y - b.y);
@@ -274,6 +317,24 @@ export class Renderer {
     this.drawMotes(g, dt, view);
     this.drawTexts(g, dt);
     this.drawOverlay(g, dt, me);
+  }
+
+  /** Notices a unit going down or coming back, for the fall and the pop. */
+  private trackLife(u: ViewUnit) {
+    const dead = !!(u.st & ST.dead), l = this.life.get(u.i);
+    if (!l) this.life.set(u.i, { dead, at: -9 });
+    else if (l.dead !== dead) { l.dead = dead; l.at = this.t; }
+  }
+
+  /** A hero falling: the last cut of the puppet topples over and fades, and a mote of light drifts up from it. */
+  private drawDeath(g: CanvasRenderingContext2D, u: ViewUnit) {
+    const c = this.heroes.get(u.i), at = this.life.get(u.i)?.at ?? -9;
+    if (!c?.b) return;
+    const k = Math.min(1, (this.t - at) / 1.6), fall = Math.min(1, k * 3), dir = Math.cos(u.f * Math.PI / 180) < 0 ? 1 : -1;
+    g.save(); g.translate(u.rx, u.ry + 4); g.rotate(dir * fall * fall * 1.4); g.globalAlpha = 1 - Math.max(0, (k - .4) / .6);
+    g.drawImage(c.b.c, c.b.l, c.b.t, c.b.w, c.b.h);
+    g.restore();
+    if (k > .15) { const a = 1 - k; glow(g, u.rx, u.ry - 30 - k * 110, 26, TEAM_LIGHT[u.tm] || '#fff', a); circle(g, u.rx, u.ry - 30 - k * 110, 4, alpha('#ffffff', a)); }
   }
 
   /** A red ring round an enemy tower or Core that can shoot you, when you come near it. */
@@ -366,6 +427,17 @@ export class Renderer {
       }
     }
     if (this.duel && C.latest && C.latest.rr > 0) this.drawRing(g, C.latest.rr);
+    if (this.duel && C.latest?.ss) this.drawShard(g, m.center[0], m.center[1]);
+    // The ring under whatever your hero is hitting.
+    const tg = this.myTarget.id ? C.units.get(this.myTarget.id) : undefined;
+    if (tg && !(tg.st & ST.dead) && t - this.myTarget.at < 2.5 && inView(tg.rx, tg.ry)) {
+      const r = (isHero(tg.k) ? 30 : tg.k === 'tower' ? 56 : tg.k === 'core' ? 80 : tg.k === 'warden' ? 60 : 24) + Math.sin(t * 8) * 2, fade = Math.min(1, (2.5 - (t - this.myTarget.at)) * 2);
+      g.save(); g.translate(tg.rx, tg.ry + 3); g.scale(1, .42);
+      g.strokeStyle = alpha('#ff6b5a', .85 * fade); g.lineWidth = 3.5; g.beginPath(); g.arc(0, 0, r, 0, TAU); g.stroke();
+      g.fillStyle = alpha('#ff6b5a', .9 * fade);
+      for (let i = 0; i < 4; i++) { const a = t * 1.8 + i * TAU / 4; g.save(); g.rotate(a); g.beginPath(); g.moveTo(r + 3, 0); g.lineTo(r + 14, -6); g.lineTo(r + 14, 6); g.closePath(); g.fill(); g.restore(); }
+      g.restore();
+    }
     const me = C.myUnit(), a = this.aim;
     if (me && a) {
       g.strokeStyle = 'rgba(255,244,222,.55)'; g.lineWidth = 2.5; g.setLineDash([10, 8]);
@@ -447,6 +519,23 @@ export class Renderer {
         break;
       }
     }
+  }
+
+  /** The duel's Starshard: a falling star crystal in the middle of the ring, waiting for whoever gets there first. */
+  private drawShard(g: CanvasRenderingContext2D, x: number, y: number) {
+    const t = this.t, bob = Math.sin(t * 2.6) * 6;
+    g.save(); g.translate(x, y); g.scale(1, .5);
+    g.strokeStyle = alpha('#ffe38a', .55 + Math.sin(t * 5) * .2); g.lineWidth = 3; g.setLineDash([10, 8]); g.lineDashOffset = -t * 40;
+    g.beginPath(); g.arc(0, 0, 62, 0, TAU); g.stroke(); g.setLineDash([]);
+    g.restore();
+    glow(g, x, y - 40 + bob, 70, '#ffe38a', .6 + Math.sin(t * 4) * .15);
+    g.strokeStyle = alpha('#fff6d8', .5); g.lineWidth = 2;
+    for (let i = 0; i < 6; i++) { const a = t * .8 + i * TAU / 6; g.beginPath(); g.moveTo(x + Math.cos(a) * 16, y - 40 + bob + Math.sin(a) * 16); g.lineTo(x + Math.cos(a) * 34, y - 40 + bob + Math.sin(a) * 34); g.stroke(); }
+    g.save(); g.translate(x, y - 40 + bob); g.rotate(Math.sin(t) * .2);
+    g.fillStyle = '#ffd65c'; g.beginPath(); g.moveTo(0, -22); g.lineTo(11, 0); g.lineTo(0, 22); g.lineTo(-11, 0); g.closePath(); g.fill(); g.strokeStyle = INK; g.lineWidth = 2; g.stroke();
+    g.fillStyle = '#fff6d8'; g.beginPath(); g.moveTo(0, -22); g.lineTo(-11, 0); g.lineTo(0, 0); g.closePath(); g.fill();
+    g.restore();
+    if (Math.random() < .4 * this.quality) this.push({ x: x + (Math.random() - .5) * 60, y: y + (Math.random() - .5) * 20, z: 0, vx: 0, vy: 0, vz: 60 + Math.random() * 50, life: .9, max: .9, color: '#ffe38a', size: 2.4, kind: 'star', rot: Math.random() * 6, glow: true });
   }
 
   /** The duel's closing ring of starfire: the world outside it dims and burns. */
@@ -568,9 +657,15 @@ export class Renderer {
     if (u.st & ST.blessed) glow(g, x, y - m.r, m.r * 2.2, '#ffd35c', .35);
   }
 
-  /** A hero as a paper puppet, re-cut a limited number of times a second. */
+  private lookOf(u: ViewUnit, id: HeroId) {
+    let l = this.looks.get(u.i);
+    if (!l) { const skin = this.client.hero(u.i)?.skin ?? null; l = { fig: skinFigure(id, skin), gear: skinGear(skin), skin: skinLook(skin) }; this.looks.set(u.i, l); }
+    return l;
+  }
+
+  /** A hero as a paper puppet, re-cut a limited number of times a second, and moved about as a whole between cuts. */
   private drawHero(g: CanvasRenderingContext2D, u: ViewUnit, mine: boolean) {
-    const t = this.t, x = u.rx, y = u.ry, id = u.k as Parameters<typeof heroFigure>[0];
+    const t = this.t, x = u.rx, y = u.ry, id = u.k as HeroId, L = this.lookOf(u, id), skin = L.skin;
     const since = t - u.actT, castLeft = u.castT >= 0 ? u.castDur - (t - u.castT) : -1, casting = castLeft > 0;
     const actDur = .38, acting = since < actDur && !!u.act;
     let arm: ArmAction = id === 'wren' || id === 'mira' || id === 'lyra' || id === 'elara' ? 'hold' : 'idle', k = 0;
@@ -580,36 +675,116 @@ export class Renderer {
     const face = (acting || casting) && (u.ax !== x || u.ay !== y) ? facingOf(u.ax - x, u.ay - y) : facingOf(Math.cos(u.f * Math.PI / 180), Math.sin(u.f * Math.PI / 180));
     const stealth = !!(u.st & ST.stealth), flash = t - u.hurtT < .1 && Math.floor(t * 16) % 2 === 0;
     const lift = u.st & ST.dashing && id === 'wren' ? -30 : 0;
+    const rich = this.quality >= 1;
 
+    // On the ground beneath: the skin's aura, a spell's rune, a recall's light, the whirlwind.
+    if (skin?.aura && !stealth) {
+      const p = .5 + Math.sin(t * 2.4 + u.i) * .25;
+      glow(g, x, y + 2, 44 + p * 8, skin.aura, .22 + p * .2);
+      if (rich) { g.save(); g.translate(x, y + 3); g.scale(1, .4); g.strokeStyle = alpha(skin.aura, .35 + p * .25); g.lineWidth = 2; g.setLineDash([6, 9]); g.lineDashOffset = -t * 18; g.beginPath(); g.arc(0, 0, 36, 0, TAU); g.stroke(); g.setLineDash([]); g.restore(); }
+    }
+    if (casting) this.drawCastRune(g, x, y, k, ABILITY_COLOR[u.castK] || '#ffe38a');
+    if (u.st & ST.recall) this.drawRecall(g, u, x, y);
     if (u.st & ST.spin) this.drawBladestorm(g, x, y);
+    if (u.st & ST.haste && u.moving) {
+      const a = u.f * Math.PI / 180, bx = -Math.cos(a), by = -Math.sin(a);
+      g.strokeStyle = alpha('#ffffff', .55); g.lineWidth = 2; g.lineCap = 'round';
+      for (let i = 0; i < 3; i++) { const off = (i - 1) * 14, ph = (t * 6 + i * .3) % 1, ox = x - by * off + bx * (20 + ph * 30), oy = y - 30 + bx * off * .5 + by * (20 + ph * 30); g.globalAlpha = 1 - ph; g.beginPath(); g.moveTo(ox, oy); g.lineTo(ox + bx * 22, oy + by * 22); g.stroke(); }
+      g.globalAlpha = 1;
+    }
+
     const fps = mine ? (this.quality >= 1 ? 60 : 40) : (this.quality >= 1 ? 30 : 20);
     let c = this.heroes.get(u.i);
     if (!c) this.heroes.set(u.i, c = { b: null, at: -1, joints: null, k: 0 });
     if (!c.b || t - c.at >= 1 / fps - .001) {
       const cc = c;
-      const fig = heroFigure(id, {}), hooks = heroHooks(id, {}, casting || acting ? k : 0, t, { bowDraw: arm === 'draw' ? Math.sin(Math.min(1, k) * Math.PI) : 0 });
+      const hooks = heroHooks(id, L.gear, casting || acting ? k : 0, t, { bowDraw: arm === 'draw' ? Math.sin(Math.min(1, k) * Math.PI) : 0 });
       c.b = this.cutter.rebake(c.b, FIGURE_BOX, this.res(2), STICKER, gg => {
         if (u.st & ST.spin) gg.rotate(Math.sin(t * 30) * .15);
-        cc.joints = drawFigure(gg, fig, { facing: face.facing, dir: face.dir, walk: u.walk, moving: u.moving, t: t + u.i, arm, k }, hooks);
+        cc.joints = drawFigure(gg, L.fig, { facing: face.facing, dir: face.dir, walk: u.walk, moving: u.moving, t: t + u.i, arm, k }, hooks);
       }, flash ? 'rgba(255,255,255,.72)' : undefined);
       c.at = t; c.k = casting || acting ? k : 0;
     }
+
+    // The puppet as a whole: lunge into a blow (or recoil from a shot), squash on the strike, lean into a walk,
+    // crouch through a wind-up, pop up when coming back.
+    let ox = 0, oy = 0, sx = 1, sy = 1, rot = 0;
+    if (acting && !(u.st & ST.spin)) {
+      const s = Math.sin(Math.min(1, since / actDur) * Math.PI), ang = Math.atan2(u.ay - y, u.ax - x);
+      const push = id === 'kael' || id === 'riven' ? 11 * s : -4 * s;
+      ox += Math.cos(ang) * push; oy += Math.sin(ang) * push * .6;
+      sx += s * .07; sy -= s * .06;
+    }
+    if (casting) { const p = Math.sin(k * Math.PI); sx += p * .03; sy -= p * .05; }
+    if (u.moving && !acting && !casting) rot = Math.cos(u.f * Math.PI / 180) * .07;
+    const l = this.life.get(u.i), born = l && l.at > 0 && !l.dead ? t - l.at : 9;
+    if (born < .45) { const e = backOut(born / .45); sx *= e; sy *= e; }
+
+    // Afterimages while dashing.
+    let echo = this.echoes.get(u.i);
+    if (u.st & ST.dashing) { if (!echo) this.echoes.set(u.i, echo = []); echo.push({ x, y, t }); if (echo.length > 6) echo.shift(); }
+    if (echo?.length) {
+      for (const e of echo) { const a = 1 - (t - e.t) / .25; if (a <= 0) continue; g.globalAlpha = a * .35; g.drawImage(c.b.c, e.x + c.b.l, e.y + lift + c.b.t, c.b.w, c.b.h); }
+      g.globalAlpha = 1;
+      if (t - echo[echo.length - 1].t > .25) this.echoes.delete(u.i);
+    }
+
     g.save();
+    g.translate(x + ox, y + oy + lift); if (rot) g.rotate(rot); if (sx !== 1 || sy !== 1) g.scale(sx, sy);
     if (stealth) {
       // Nightveil: barely there, two ghost copies wavering apart over a faint violet shadow.
       const w = Math.sin(t * 5) * 1.8;
-      glow(g, x, y - 6, 46, '#6a4bd6', .22);
-      g.globalAlpha = .3; g.drawImage(c.b.c, x + w + c.b.l, y + lift + c.b.t, c.b.w, c.b.h);
-      g.globalAlpha = .2; g.drawImage(c.b.c, x - w + c.b.l, y + lift + c.b.t, c.b.w, c.b.h);
-    } else g.drawImage(c.b.c, x + c.b.l, y + lift + c.b.t, c.b.w, c.b.h);
+      glow(g, 0, -6, 46, '#6a4bd6', .22);
+      g.globalAlpha = .3; g.drawImage(c.b.c, w + c.b.l, c.b.t, c.b.w, c.b.h);
+      g.globalAlpha = .2; g.drawImage(c.b.c, -w + c.b.l, c.b.t, c.b.w, c.b.h);
+    } else g.drawImage(c.b.c, c.b.l, c.b.t, c.b.w, c.b.h);
     g.restore();
-    // Staff heads glow, brighter while a spell is being cast.
+    if (born < .45) glow(g, x, y - 30, 60, TEAM_LIGHT[u.tm] || '#fff', 1 - born / .45);
+
+    // Staff heads glow (in the skin's colour), brighter while a spell is being cast.
     if (c.joints && (id === 'mira' || id === 'lyra' || id === 'elara') && c.joints.facing !== 'back' && !stealth) {
-      const tip = staffTip(c.joints, c.k), col = id === 'mira' ? '#ffe38a' : id === 'lyra' ? '#9fe4ff' : '#b9e27a';
-      glow(g, x + tip.x, y + lift + tip.y, 16 + (casting ? 24 : 0), casting ? ABILITY_COLOR[u.castK] || col : col, .85);
+      const tip = staffTip(c.joints, c.k), col = skin?.weapon.color ?? (id === 'mira' ? '#ffe38a' : id === 'lyra' ? '#9fe4ff' : '#b9e27a');
+      glow(g, x + ox + tip.x, y + oy + lift + tip.y, 16 + (casting ? 24 : 0), casting ? ABILITY_COLOR[u.castK] || col : col, .85);
       if (casting && Math.random() < .5) this.push({ x: x + tip.x + (Math.random() - .5) * 8, y: y + tip.y, z: 0, vx: (Math.random() - .5) * 30, vy: -20, vz: 0, life: .6, max: .6, color: ABILITY_COLOR[u.castK] || col, size: 2.2, kind: 'dot', rot: 0, glow: true });
     }
+    if (u.moving && !stealth && !lift) {
+      // Dust at the heels, and a legendary skin's trail.
+      if (t >= (this.nextStep.get(u.i) ?? 0)) {
+        this.nextStep.set(u.i, t + (rich ? .22 : .34));
+        const dust = this.client.map.theme === 'summit' ? '#ffffff' : this.client.map.theme === 'ember' ? '#9a8878' : '#e0d0a8';
+        this.push({ x: x + (Math.random() - .5) * 12, y: y + 6, z: 2, vx: (Math.random() - .5) * 30, vy: 0, vz: 18, life: .45, max: .45, color: dust, size: 5 + Math.random() * 3, kind: 'smoke', rot: 0, glow: false });
+      }
+      if (skin?.trail && Math.random() < .55 * this.quality) this.push({ x: x + (Math.random() - .5) * 26, y: y + (Math.random() - .5) * 8, z: 6 + Math.random() * 30, vx: 0, vy: 0, vz: 30 + Math.random() * 30, life: .7, max: .7, color: skin.trail.color, size: 2.6, kind: skin.trail.kind, rot: Math.random() * 6, glow: skin.trail.kind === 'star' || skin.trail.kind === 'ember' });
+    }
     this.drawStatus(g, u, x, y + lift, true);
+  }
+
+  /** A rune circle under a hero winding up a spell, filling as the spell gets ready. */
+  private drawCastRune(g: CanvasRenderingContext2D, x: number, y: number, p: number, col: string) {
+    p = Math.max(0, Math.min(1, p));
+    const t = this.t, r = 30 + p * 12;
+    glow(g, x, y, 34 + p * 26, col, .2 + p * .35);
+    g.save(); g.translate(x, y + 3); g.scale(1, .45);
+    g.strokeStyle = alpha(col, .55 + p * .4); g.lineWidth = 2.5; g.setLineDash([9, 6]); g.lineDashOffset = -t * 70;
+    g.beginPath(); g.arc(0, 0, r, 0, TAU); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = alpha(col, .9); g.lineWidth = 3.5; g.beginPath(); g.arc(0, 0, r - 7, -Math.PI / 2, -Math.PI / 2 + TAU * p); g.stroke();
+    g.rotate(t * 1.6); g.fillStyle = alpha(col, .8);
+    for (let i = 0; i < 6; i++) { const a = i * TAU / 6; star4(g, Math.cos(a) * (r + 6), Math.sin(a) * (r + 6), 4, a); g.fill(); }
+    g.restore();
+  }
+
+  /** A recall home: a column of light thickening round the hero and a ring filling at their feet. */
+  private drawRecall(g: CanvasRenderingContext2D, u: ViewUnit, x: number, y: number) {
+    const t = this.t, mine = u.i === this.client.me?.u, r = this.recalls.get(u.i);
+    const total = r?.dur ?? 4.5, p = mine && this.client.me ? Math.max(0, Math.min(1, 1 - this.client.me.rc / total)) : r ? Math.min(1, (t - r.at) / r.dur) : .5;
+    const col = TEAM_LIGHT[u.tm] || '#ffffff';
+    g.fillStyle = alpha(col, .1 + p * .2); g.fillRect(x - 26 + p * 6, y - 170, 52 - p * 12, 170);
+    glow(g, x, y - 40, 50 + p * 30, col, .3 + p * .4);
+    g.save(); g.translate(x, y + 3); g.scale(1, .42);
+    g.strokeStyle = alpha(col, .35); g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 38, 0, TAU); g.stroke();
+    g.strokeStyle = col; g.lineWidth = 5; g.beginPath(); g.arc(0, 0, 38, -Math.PI / 2, -Math.PI / 2 + TAU * p); g.stroke();
+    g.restore();
+    if (Math.random() < .5 * this.quality) this.push({ x: x + (Math.random() - .5) * 40, y, z: 0, vx: 0, vy: 0, vz: 120 + Math.random() * 80, life: .8, max: .8, color: col, size: 2.4, kind: 'star', rot: 0, glow: true });
   }
 
   /** Steel Cyclone: a ring of steel whirling around Kael. */
@@ -692,11 +867,15 @@ export class Renderer {
     const top = hero ? u.ry - 98 : u.k === 'tower' ? u.ry - 182 : u.k === 'core' ? u.ry - 190 : u.k === 'warden' ? u.ry - 170 : u.k === 'heavy' || u.k === 'boar' ? u.ry - 70 : u.ry - 54;
     if (!hero && u.hp >= u.mh && u.k !== 'tower' && u.k !== 'core' && u.k !== 'warden') return;
     const x = u.rx - w / 2;
-    const col = mine ? '#7fe07a' : u.tm === 0 ? '#f2c96a' : enemy ? '#ff5a5a' : '#5fb0ff';
-    rrect(g, x - 2, top - 2, w + 4, hgt + 4, 3, INK);
+    // Last hits: an enemy minion (or monster) your next basic attack would finish is marked in gold.
+    const ad = C.me?.ad ?? 0, mob = (u.k === 'melee' || u.k === 'ranged' || u.k === 'heavy' || u.k === 'boar' || u.k === 'wolf') && (enemy || u.tm === 0);
+    const lastHit = mob && ad > 0 && u.hp <= ad;
+    const col = lastHit ? '#ffd35c' : mine ? '#7fe07a' : u.tm === 0 ? '#f2c96a' : enemy ? '#ff5a5a' : '#5fb0ff';
+    rrect(g, x - 2, top - 2, w + 4, hgt + 4, 3, lastHit ? '#fff1b8' : INK);
     rrect(g, x, top, w, hgt, 2, '#3a2a34');
     const f = Math.max(0, Math.min(1, u.hp / u.mh));
     rrect(g, x, top, w * f, hgt, 2, col);
+    if (mob && ad > 0 && !lastHit && ad < u.mh) { g.fillStyle = 'rgba(255,241,184,.9)'; g.fillRect(x + w * ad / u.mh - .75, top - 1, 1.5, hgt + 2); }
     g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x + 1, top + 1, Math.max(0, w * f - 2), 2);
     if (u.sh > 0) { const sf = Math.min(1 - f, u.sh / u.mh); rrect(g, x + w * f, top, w * sf, hgt, 2, '#f4ecd8'); }
     if (hero) {
@@ -848,6 +1027,13 @@ export class Renderer {
         case 'dmg': {
           if (!u) break;
           const v = f.v ?? 0, crit = f.k === 'crit', mineHit = f.u === C.me?.u;
+          // Sparks fly from a hit, away from whoever struck; your own critical hits hold the frame for an instant.
+          const src = f.u2 ? C.units.get(f.u2) : undefined;
+          if (src && v > 0) {
+            const d = Math.hypot(at.x - src.rx, at.y - src.ry) || 1, dx = (at.x - src.rx) / d, dy = (at.y - src.ry) / d, n = Math.round((crit ? 7 : 3) * this.quality);
+            for (let i = 0; i < n; i++) { const sp = 160 + Math.random() * 200, j = (Math.random() - .5) * 1.2; this.push({ x: at.x, y: at.y - 26, z: 20, vx: (dx * Math.cos(j) - dy * Math.sin(j)) * sp, vy: (dy * Math.cos(j) + dx * Math.sin(j)) * sp * .6, vz: 40 + Math.random() * 80, life: .28, max: .28, color: crit ? '#ffd35c' : f.k === 'spell' ? '#e0d4ff' : '#fff4de', size: 2.2, kind: 'dot', rot: 0, glow: crit }); }
+            if (crit && f.u2 === C.me?.u) this.hitstop = Math.max(this.hitstop, .05);
+          }
           if (v <= 0) { this.text(at.x, at.y - 70, 'Absorbed', '#f4ecd8', 13); break; }
           if (mineHit || isHero(u.k) || crit || f.k === 'spell') this.text(at.x + (Math.random() - .5) * 20, at.y - 62, String(v), mineHit ? '#ff6b6b' : crit ? '#ffcf5a' : f.k === 'spell' ? '#c9b6ff' : '#fff4de', crit ? 21 : 15);
           if (v > 15) this.puff(at.x, at.y - 26, crit ? 8 : 4, crit ? '#ffd35c' : '#fff4de', crit ? 'star' : 'dot');
@@ -857,6 +1043,7 @@ export class Renderer {
         case 'heal': if (u && (f.v ?? 0) >= 5) { this.text(at.x, at.y - 72, `+${f.v}`, '#8fe08a', 15); if ((f.v ?? 0) > 30) this.puff(at.x, at.y - 30, 5, '#b9f2a0', 'leaf'); } break;
         case 'gold': if (f.u === C.me?.u) { this.text(f.x ?? at.x, (f.y ?? at.y) - 40, `+${f.v}g`, '#ffd85c', 14); sfx.play('pickup', { x: f.x ?? 0, y: f.y ?? 0 }, .5); } break;
         case 'atk': {
+          if (u && f.u === C.me?.u && f.u2) this.myTarget = { id: f.u2, at: this.t };
           if (u && f.k === 'slash') this.slashes.push({ x: u.rx, y: u.ry - 20, angle: Math.atan2((f.y ?? u.ry) - u.ry, (f.x ?? u.rx) - u.rx), reach: 120, life: .28, max: .28, narrow: false, color: '#ffd0a0' });
           if (u && f.k === 'stab') this.slashes.push({ x: u.rx, y: u.ry - 20, angle: Math.atan2((f.y ?? u.ry) - u.ry, (f.x ?? u.rx) - u.rx), reach: 90, life: .18, max: .18, narrow: true, color: '#e0c8ff' });
           if (u && (f.k === 'tower' || f.k === 'core')) {
@@ -889,10 +1076,32 @@ export class Renderer {
         case 'burst': this.burst(f.k || '', f.x ?? at.x, f.y ?? at.y, f.r ?? 80); break;
         case 'comet': this.telegraphs.push({ x: f.x ?? 0, y: f.y ?? 0, r: f.r ?? 90, start: this.t, until: this.t + (f.v ?? 600) / 1000, color: '#c9b6ff', kind: 'comet' }); break;
         case 'blink': {
-          const col = f.k === 'shadow' ? '#b69cff' : '#d6f4ff';
+          const col = f.k === 'shadow' ? '#b69cff' : f.k === 'flash' ? '#ffe38a' : '#d6f4ff', kind: PKind = f.k === 'shadow' ? 'smoke' : f.k === 'flash' ? 'star' : 'snow';
           this.streaks.push({ x0: f.x ?? 0, y0: (f.y ?? 0) - 30, x1: f.x2 ?? 0, y1: (f.y2 ?? 0) - 30, life: .35, max: .35, color: col });
-          this.puff(f.x ?? 0, f.y ?? 0, 10, col, f.k === 'shadow' ? 'smoke' : 'snow');
-          this.puff(f.x2 ?? 0, f.y2 ?? 0, 10, col, f.k === 'shadow' ? 'smoke' : 'snow');
+          this.puff(f.x ?? 0, f.y ?? 0, 10, col, kind);
+          this.puff(f.x2 ?? 0, f.y2 ?? 0, 10, col, kind);
+          if (f.k === 'flash') { this.rings.push({ x: f.x2 ?? 0, y: f.y2 ?? 0, r0: 10, r1: 70, life: .35, max: .35, color: col, width: 4 }); sfx.play('dash', { x: f.x2 ?? 0, y: f.y2 ?? 0 }); }
+          break;
+        }
+        case 'charm': if (u && f.k !== 'flash') sfx.play(f.k === 'heal' ? 'drink' : f.k === 'ghost' ? 'flap' : 'shield', at); break;
+        case 'recall':
+          if (f.k === 'start' && f.u) this.recalls.set(f.u, { at: this.t, dur: (f.v ?? 4500) / 1000 });
+          else if (f.u) this.recalls.delete(f.u);
+          if (f.k === 'cancel' && u) this.puff(at.x, at.y - 30, 6, TEAM_LIGHT[u.tm] || '#fff', 'smoke');
+          if (f.k === 'done') {
+            const col = TEAM_LIGHT[u?.tm ?? C.team] || '#fff';
+            this.streaks.push({ x0: f.x ?? 0, y0: f.y ?? 0, x1: f.x ?? 0, y1: (f.y ?? 0) - 380, life: .5, max: .5, color: col });
+            this.rings.push({ x: f.x2 ?? 0, y: f.y2 ?? 0, r0: 10, r1: 100, life: .55, max: .55, color: col, width: 4 });
+            this.puff(f.x2 ?? 0, (f.y2 ?? 0) - 30, 14, col, 'star');
+            if (f.u === C.me?.u) sfx.play('learn');
+          }
+          break;
+        case 'shard': {
+          const x = f.x ?? at.x, y = f.y ?? at.y, col = TEAM_LIGHT[f.tm ?? 0] || '#ffe38a';
+          this.rings.push({ x, y, r0: 20, r1: 160, life: .6, max: .6, color: '#ffe38a', width: 6, fill: true });
+          this.streaks.push({ x0: x, y0: y, x1: x, y1: y - 400, life: .45, max: .45, color: col });
+          this.puff(x, y - 40, 22, '#ffe38a', 'star');
+          sfx.play('questDone', { x, y });
           break;
         }
         case 'die': {
@@ -924,10 +1133,10 @@ export class Renderer {
         case 'star': if (u) { this.puff(at.x, at.y - 30, 8, '#fff1b8', 'star'); sfx.play('orb', at); } break;
         case 'plant': this.puff(f.x ?? 0, (f.y ?? 0) - 10, 14, '#f7c5d5', 'leaf'); sfx.play('drink', { x: f.x ?? 0, y: f.y ?? 0 }); break;
         case 'respawn': this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 90, life: .6, max: .6, color: TEAM_LIGHT[C.team], width: 4 }); this.puff(at.x, at.y - 30, 12, TEAM_LIGHT[u?.tm ?? C.team], 'star'); break;
-        case 'struct': this.shake = 20; this.flash = { color: '#fff4de', a: .22 }; break;
+        case 'struct': this.shake = 20; this.flash = { color: '#fff4de', a: .22 }; this.zoom = Math.max(this.zoom, .05); break;
         case 'kill':
-          if (f.u === C.me?.u) this.flash = { color: '#ffd35c', a: .28 };
-          else if (f.u2 === C.me?.u) this.flash = { color: '#c81e28', a: .4 };
+          if (f.u === C.me?.u) { this.flash = { color: '#ffd35c', a: .28 }; this.hitstop = .1; this.zoom = .08; }
+          else if (f.u2 === C.me?.u) { this.flash = { color: '#c81e28', a: .4 }; this.hitstop = .12; }
           break;
         case 'learn': if (u) { this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 70, life: .5, max: .5, color: '#ffe38a', width: 4 }); this.puff(at.x, at.y - 40, 10, '#ffe38a', 'star'); } break;
         case 'upgrade': if (u) { this.rings.push({ x: at.x, y: at.y, r0: 10, r1: 60, life: .45, max: .45, color: '#c9b6ff', width: 3 }); this.puff(at.x, at.y - 40, 8, '#e8dcff', 'star'); } break;
@@ -955,6 +1164,9 @@ export class Renderer {
       case 'bloom': ring('#9fe8b0', 8, true, .7); this.puff(x, y, 40, '#f7c5d5', 'leaf'); this.puff(x, y, 24, '#b9e27a', 'leaf'); this.puff(x, y, 10, '#fff2a1', 'star'); break;
       case 'shellbreak': this.puff(x, y - 30, 16, '#d6f4ff', 'shard'); sfx.play('reflect', { x, y }); break;
       case 'warden': ring('#c9b6ff', 6, true, .4); this.puff(x, y, 10, '#a78bfa', 'star'); sfx.play('slam', { x, y }, .6); break;
+      case 'heal': ring('#8fe08a', 5, true, .45); this.puff(x, y - 20, 12, '#b9f2a0', 'leaf'); this.puff(x, y - 30, 6, '#ffffff', 'star'); break;
+      case 'ghost': ring('#e8f4ff', 3, false, .35); this.puff(x, y - 20, 12, '#e8f4ff', 'smoke'); break;
+      case 'barrier': ring('#ffe9a8', 6, true, .45); this.puff(x, y - 30, 10, '#fff1b8', 'star'); break;
       default: ring('#fff4de', 4);
     }
   }
@@ -1045,11 +1257,14 @@ export class Renderer {
       const mine = u.i === C.me?.u;
       dot(u.rx, u.ry, mine ? 5.5 : 4.5, mine ? '#ffe38a' : TEAM_COLOR[u.tm], mine ? '#fff' : INK);
     }
-    const halfW = this.w / 2 / this.cam.scale, halfH = this.h / 2 / this.cam.scale;
+    const halfW = this.w / 2 / this.scale, halfH = this.h / 2 / this.scale;
     g.strokeStyle = 'rgba(255,244,222,.8)'; g.lineWidth = 1.5;
     g.strokeRect((this.cam.x - halfW) * sx, (this.cam.y - halfH) * sy, halfW * 2 * sx, halfH * 2 * sy);
   }
 }
+
+/** Eases 0 → 1 overshooting a little at the end: a pop. */
+const backOut = (p: number) => { const c = 1.7, q = Math.min(1, Math.max(0, p)) - 1; return 1 + (c + 1) * q * q * q + c * q * q; };
 
 // ───────────────────────────── structures (original to Mini Rift)
 

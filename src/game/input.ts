@@ -7,11 +7,14 @@ import { isHero } from './heroes';
 // Turns keys, mouse and touch into intentions for the server: which way to walk, whether to attack, what to cast where.
 //
 // PC: WASD or arrows to walk (or right-click to walk to a spot), Space or left mouse to attack, Q E R F (or 1–4) to
-// cast at the mouse. Phone: a thumbstick anywhere on the left half; tap an ability to cast it at the best target in
-// range, or drag from it to aim, and let go to cast.
+// cast at the mouse, C for the charm, H to recall. Phone: a thumbstick anywhere on the left half; tap an ability to
+// cast it at the best target in range, or drag from it to aim, and let go to cast (or drop it on ✕ to cancel).
 
 export const CAST_KEYS: Record<string, number> = { q: 1, e: 2, r: 3, f: 4, '1': 1, '2': 2, '3': 3, '4': 4 };
-export const KEY_LABELS = ['Space', 'Q', 'E', 'R', 'F'];
+export const KEY_LABELS = ['Space', 'Q', 'E', 'R', 'F', 'C'];
+/** The charm is aimed and cast like a sixth ability. */
+export const CHARM_SLOT = 5;
+const CHARM_DEF: AbilityDef = { id: 'charm', name: 'Charm', slot: CHARM_SLOT, cooldown: 0, cost: 0, range: 260, radius: 0, power: 0, duration: 0, cc: 0, speed: 0, windup: 0, target: 'point', toggle: false, effects: '' };
 
 export class Input {
   private keys = new Set<string>();
@@ -25,6 +28,8 @@ export class Input {
   onUpgradeKey: () => void = () => {};
   onLearn: (slot: number) => void = () => {};
   onScoreKey: (down: boolean) => void = () => {};
+  /** The last direction the player walked in, for a tapped Flash. */
+  private lastMove = { x: 0, y: 0 };
 
   private client: MatchClient;
   private renderer: Renderer;
@@ -47,7 +52,10 @@ export class Input {
       if (k === 'tab') { e.preventDefault(); this.onScoreKey(true); return; }
       if (k === 'b' || k === 'u') { this.onUpgradeKey(); return; }
       if (k === ' ') e.preventDefault();
-      if (!e.repeat && CAST_KEYS[k]) { this.cast(CAST_KEYS[k], this.mouse ? this.renderer.screenToWorld(this.mouse.x, this.mouse.y) : undefined); return; }
+      const atMouse = () => this.mouse ? this.renderer.screenToWorld(this.mouse.x, this.mouse.y) : undefined;
+      if (!e.repeat && CAST_KEYS[k]) { this.cast(CAST_KEYS[k], atMouse()); return; }
+      if (!e.repeat && k === 'c') { this.cast(CHARM_SLOT, atMouse()); return; }
+      if (!e.repeat && k === 'h') { void this.recall(); return; }
       this.keys.add(k);
       if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) this.renderer.moveTarget = null;
     });
@@ -86,16 +94,26 @@ export class Input {
     }
     const attack = this.attackHeld || this.mouseAttack || k.has(' ');
     net.input(x, y, attack);
+    if (x || y) this.lastMove = { x, y };
     // Keep the aim preview following the drag.
     if (this.aiming) this.renderer.aim = this.preview(this.aiming.slot, this.aimPoint(this.aiming.slot, this.aiming.dx, this.aiming.dy));
     return { x, y };
   }
 
-  def(slot: number): AbilityDef { return this.hero.abilities[slot]; }
+  def(slot: number): AbilityDef {
+    if (slot !== CHARM_SLOT) return this.hero.abilities[slot];
+    // Only Flash goes somewhere; the other charms are cast on yourself.
+    return this.charmId() === 'flash' ? CHARM_DEF : { ...CHARM_DEF, range: 0, target: 'self' };
+  }
+  charmId() { return this.client.me?.ch ?? 'flash'; }
 
   // ───────────────────────────── touch aiming (driven by the ability buttons)
 
-  beginAim(slot: number) { this.aiming = this.learned(slot) ? { slot, dx: 0, dy: 0 } : null; if (!this.aiming) void this.cast(slot); }
+  beginAim(slot: number) {
+    const aimable = this.learned(slot) && (slot !== CHARM_SLOT || this.charmId() === 'flash');
+    this.aiming = aimable ? { slot, dx: 0, dy: 0 } : null;
+    if (!this.aiming) void this.cast(slot);
+  }
   /** dx, dy: the drag from the button, -1…1 of its reach. */
   moveAim(dx: number, dy: number) { if (this.aiming) { this.aiming.dx = dx; this.aiming.dy = dy; } }
   endAim(cancel: boolean) {
@@ -126,6 +144,12 @@ export class Input {
     if (!me) return { x: 0, y: 0 };
     const range = Math.max(d.range, d.radius, 200);
     if (d.target === 'self') return { x: me.rx, y: me.ry };
+    // A tapped Flash goes the way the hero is walking (or facing).
+    if (slot === CHARM_SLOT) {
+      const m = this.lastMove, mv = Math.hypot(m.x, m.y) > .1 && (this.stick.x || this.stick.y || this.keys.size) ? m : null, a = me.f * Math.PI / 180;
+      const dx = mv ? m.x / Math.hypot(m.x, m.y) : Math.cos(a), dy = mv ? m.y / Math.hypot(m.x, m.y) : Math.sin(a);
+      return { x: me.rx + dx * d.range, y: me.ry + dy * d.range };
+    }
     if (d.target === 'ally') {
       let best = me, score = me.hp / me.mh;
       for (const u of C.units.values()) {
@@ -159,9 +183,20 @@ export class Input {
   }
 
   /** Whether the hero has learned this ability yet (battles: one per level). */
-  learned(slot: number) { const me = this.client.me; return !me || slot === 0 || !!(me.ln & (1 << slot)); }
+  learned(slot: number) { const me = this.client.me; return !me || slot === 0 || slot === CHARM_SLOT || !!(me.ln & (1 << slot)); }
+
+  async recall() {
+    const err = await net.recall();
+    if (err) this.onError(err);
+  }
 
   async cast(slot: number, at?: { x: number; y: number }) {
+    if (slot === CHARM_SLOT) {
+      const p = at && this.def(slot).target !== 'self' ? at : this.autoAim(slot);
+      const err = await net.charm(p.x, p.y);
+      if (err) this.onError(err);
+      return;
+    }
     // Not learned yet: spend a spell point on it, if there is one.
     if (!this.learned(slot)) {
       const me = this.client.me!;

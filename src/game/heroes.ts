@@ -97,3 +97,11 @@ export const HEROES: Record<HeroId, HeroLook> = {
 export const ROLE_ICON: Record<string, string> = { Mage: '✦', Tank: '⛨', Controller: '❄', Assassin: '†', Marksman: '➹', Support: '✿' };
 export const SLOT_KEYS = ['Space', 'Q', 'E', 'R', 'F'];
 export const isHero = (k: string): k is HeroId => k in HEROES;
+
+/** How each charm is shown: its icon and colour. Names and numbers come from the server's shop. */
+export const CHARM_LOOK: Record<string, { icon: string; color: string }> = {
+  flash: { icon: '✶', color: '#ffe38a' },
+  heal: { icon: '✚', color: '#8fe08a' },
+  ghost: { icon: '»', color: '#bfeaff' },
+  barrier: { icon: '⬡', color: '#f4ecd8' },
+};
