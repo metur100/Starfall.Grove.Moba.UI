@@ -8,7 +8,7 @@ import { Home } from './screens/Home';
 import { Lobby } from './screens/Lobby';
 import { HeroSelect } from './screens/HeroSelect';
 import { MatchView } from './screens/MatchView';
-import { MatchFoundDialog, QueuePill } from './ui/Queue';
+import { BotOfferDialog, MatchFoundDialog, QueuePill } from './ui/Queue';
 import { Auth } from './screens/Auth';
 import { social, useSocial } from './net/social';
 
@@ -111,7 +111,7 @@ export default function App() {
     go('MAIN_MENU');
   };
   /** After a match: straight back into the queue for the same kind of game. */
-  const playAgain = async (type: MatchType, mode: number) => { await leave(); await net.findMatch(type, mode); };
+  const playAgain = async (type: MatchType, mode: number, practice = false) => { await leave(); await (practice ? net.playBots(type, mode) : net.findMatch(type, mode)); };
 
   const inMatch = client && catalog && (MATCH_STATES.includes(state) || (state === 'DISCONNECTED' && clientRef.current));
   // Playing needs an account: until this device is signed in, the menu is the sign-in screen.
@@ -139,6 +139,7 @@ export default function App() {
       )}
       {(state === 'MAIN_MENU' || state === 'LOBBY') && <QueuePill queue={queue} />}
       {found && queue.state === 'found' && !inMatch && <MatchFoundDialog found={found} />}
+      {queue.state === 'searching' && queue.offer && !inMatch && <BotOfferDialog queue={queue} />}
       <div className="rotate-hint"><b>⟳</b><p>Turn your phone sideways to play</p></div>
       {state === 'DISCONNECTED' && (
         <div className="overlay disconnected">

@@ -1,6 +1,6 @@
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
 import type {
-  AuthResult, Catalog, ChatMsg, FriendsList, HelloResult, Invite, JoinResult, LeaderRow, MatchEnd, MatchFound, MatchInit, MatchType, Me, Profile,
+  AuthResult, Signal, SignalKind, Vote, Catalog, ChatMsg, FriendsList, HelloResult, Invite, JoinResult, LeaderRow, MatchEnd, MatchFound, MatchInit, MatchType, Me, Profile,
   QueueStatus, Rewards, RoomListing, RoomView, ShopResult, Snapshot,
 } from './protocol';
 
@@ -26,6 +26,8 @@ type Events = {
   chat: ChatMsg;
   friends: FriendsList;
   invite: Invite;
+  vote: Vote;
+  signal: Signal;
 };
 
 const store = {
@@ -46,7 +48,7 @@ class Net {
   status: NetStatus = 'idle';
   catalog: Catalog | null = null;
   profile: Profile | null = null;
-  queue: QueueStatus = { state: 'idle', type: null, mode: 0, waited: 0, searching: 0, botsIn: 0 };
+  queue: QueueStatus = { state: 'idle', type: null, mode: 0, waited: 0, searching: 0, offerIn: 0 };
   ping = 0;
   token: string;
 
@@ -103,6 +105,8 @@ class Net {
       conn.on('chat', (v: ChatMsg) => this.emit('chat', v));
       conn.on('friends', (v: FriendsList) => this.emit('friends', v));
       conn.on('invite', (v: Invite) => this.emit('invite', v));
+      conn.on('vote', (v: Vote) => this.emit('vote', v));
+      conn.on('signal', (v: Signal) => this.emit('signal', v));
       conn.onreconnecting(() => this.setStatus('reconnecting'));
       conn.onreconnected(async () => {
         await this.hello();
@@ -214,6 +218,17 @@ class Net {
   findMatch(type: MatchType, mode: number) { this.lastRoom = null; return this.act('FindMatch', type, mode); }
   async cancelMatch() { try { await this.call('CancelMatch'); } catch { /* gone anyway */ } }
   acceptMatch(accept: boolean) { return this.act('AcceptMatch', accept); }
+  /** A practice match against bots, straight away (unranked, pays like a custom room). */
+  playBots(type: MatchType, mode: number) { this.lastRoom = null; return this.act('PlayBots', type, mode); }
+  /** Answers "nobody found yet: play against bots?". */
+  answerBots(yes: boolean) { return this.act('AnswerBots', yes); }
+
+  // ───────────────────────────── in the match
+
+  /** Starts a surrender vote, or votes in the team's running one. */
+  surrender(yes: boolean) { return this.act('Surrender', yes); }
+  /** Pings the map for the team. */
+  signal(kind: SignalKind, x: number, y: number) { return this.act('Signal', kind, Math.round(x), Math.round(y)); }
 
   // ───────────────────────────── rooms
 

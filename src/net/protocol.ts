@@ -35,7 +35,15 @@ export type Profile = {
   firstWinReady: boolean; rotation: string[]; recent: MatchRecord[];
   /** The account: null until the player signs up. requests: friend requests waiting for an answer. */
   username: string | null; email: string | null; requests: number;
+  /** Today's three daily quests. */
+  quests: Quest[];
 };
+export type Quest = { id: string; text: string; progress: number; goal: number; coins: number };
+/** The team's surrender vote. result: set once, when it passed or failed. you: your vote, if any. */
+export type Vote = { active: boolean; yes: number; no: number; needed: number; voters: number; left: number; you: boolean | null; result: 'passed' | 'failed' | null; by: string };
+/** A teammate's map ping. u: their hero's unit id. */
+export type SignalKind = 'attack' | 'danger' | 'omw' | 'help' | 'go';
+export type Signal = { u: number; kind: SignalKind; x: number; y: number };
 export type HelloResult = { ok: boolean; error: string | null; profile: Profile | null };
 export type AuthResult = { error: string | null; profile: Profile | null; token: string | null };
 export type Friend = { id: string; name: string; level: number; rank: string; online: boolean; status: string };
@@ -44,7 +52,8 @@ export type FriendsList = { friends: Friend[]; requests: Friend[]; blocked: Frie
 export type ChatMsg = { id: string; scope: 'all' | 'team' | 'friend'; fromId: string; from: string; text: string; at: number; team: number; to: string | null };
 export type Invite = { fromId: string; from: string; code: string; type: MatchType; mode: number };
 export type ShopResult = { error: string | null; profile: Profile | null };
-export type QueueStatus = { state: 'idle' | 'searching' | 'found'; type: MatchType | null; mode: number; waited: number; searching: number; botsIn: number };
+/** offer: nobody found yet, play against bots? offerIn: seconds until that question. */
+export type QueueStatus = { state: 'idle' | 'searching' | 'found'; type: MatchType | null; mode: number; waited: number; searching: number; offerIn: number; offer?: boolean };
 export type MatchFound = { id: string; type: MatchType; mode: number; accepted: number; total: number; timeLeft: number; youAccepted: boolean; bots: number };
 export type RewardLine = { label: string; coins: number };
 export type Rewards = {
@@ -56,7 +65,7 @@ export type RoomListing = { code: string; host: string; mode: number; map: strin
 
 export type Phase = 'lobby' | 'heroSelect' | 'loading' | 'starting' | 'playing' | 'ended';
 export type RoomPlayer = { id: string; name: string; team: number; ready: boolean; bot: boolean; connected: boolean; hero: string | null; locked: boolean; skin: string | null; level: number; charm: string };
-export type RoomView = { code: string; phase: Phase; mode: number; map: string; type: MatchType; hostId: string; you: string; timer: number; players: RoomPlayer[]; winner: number; matchmade: boolean; public: boolean };
+export type RoomView = { code: string; phase: Phase; mode: number; map: string; type: MatchType; hostId: string; you: string; timer: number; players: RoomPlayer[]; winner: number; matchmade: boolean; public: boolean; practice?: boolean };
 export type JoinResult = { ok: boolean; error: string | null; code: string | null; playerId: string | null };
 
 /** Status flags (St in Entities.cs). */

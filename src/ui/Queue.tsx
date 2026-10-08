@@ -18,6 +18,27 @@ export function QueuePill({ queue }: { queue: QueueStatus }) {
   );
 }
 
+/** Nobody to play with yet: fight bots now, or keep searching. */
+export function BotOfferDialog({ queue }: { queue: QueueStatus }) {
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { sfx.play('discover'); buzz([40, 40, 40]); }, []);
+  const answer = async (yes: boolean) => { setBusy(true); await net.answerBots(yes); setBusy(false); sfx.play(yes ? 'learn' : 'ui'); };
+  const mode = queue.mode, type = queue.type === 'duel' ? 'duel' : 'battle';
+  return (
+    <div className="found-wrap">
+      <div className="found parchment bot-offer">
+        <small>{type === 'duel' ? '✦ Duel' : '⚔ Battle'} · {mode}v{mode} · searching {fmtWait(queue.waited)}</small>
+        <h2>No rivals yet</h2>
+        <p className="hint dark">Nobody near your rank is looking for a {mode}v{mode} {type} right now. Fight bots instead? You still earn coins and rating{mode > 1 ? '. Anyone else searching joins in, bots fill the rest' : ''}.</p>
+        <div className="found-actions">
+          <button className="btn primary big" disabled={busy} onClick={() => answer(true)}>Play vs bots <b>🤖</b></button>
+          <button className="btn ghost-dark" disabled={busy} onClick={() => answer(false)}>Keep searching</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Everyone has to accept a found match within a few seconds. */
 export function MatchFoundDialog({ found }: { found: MatchFound }) {
   const [busy, setBusy] = useState(false);

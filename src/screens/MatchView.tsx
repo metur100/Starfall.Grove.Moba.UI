@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { net } from '../net/connection';
-import { ST, type Catalog, type Fx, type HeroDef, type MatchEnd, type MatchHero, type MatchType, type Rewards, type RoomView } from '../net/protocol';
+import { ST, type Catalog, type Fx, type SignalKind, type Vote, type HeroDef, type MatchEnd, type MatchHero, type MatchType, type Rewards, type RoomView } from '../net/protocol';
 import type { GameState } from '../state/machine';
 import { MatchClient } from '../game/client';
-import { Renderer, TEAM_COLOR } from '../game/render';
+import { Renderer, SIGNAL_LOOK, TEAM_COLOR } from '../game/render';
 import { CHARM_SLOT, Input, KEY_LABELS } from '../game/input';
 import { CHARM_LOOK, HEROES, isHero } from '../game/heroes';
 import { heroBust } from '../game/art/bust';
@@ -18,7 +18,7 @@ import { describeUpgrade } from '../game/upgrades';
 
 type Props = {
   state: GameState; client: MatchClient; room: RoomView | null; result: MatchEnd | null; rewards: Rewards | null; catalog: Catalog;
-  onLoaded: () => void; onLeave: () => void; onLobby: () => void; onPlayAgain: (type: MatchType, mode: number) => void;
+  onLoaded: () => void; onLeave: () => void; onLobby: () => void; onPlayAgain: (type: MatchType, mode: number, practice: boolean) => void;
 };
 type Feed = { id: number; killer?: MatchHero; victim?: MatchHero; text: string; tone: 'ally' | 'enemy' | 'neutral'; at: number };
 /** A big kill announcement: who beat whom, and what it means (a double kill, a shutdown…). */
@@ -53,6 +53,10 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
   const hurt = useRef(new Map<number, Array<[number, number]>>());
   /** Each player's hero damage when the duel round began, for the round summary. */
   const roundStart = useRef(new Map<string, number>());
+  const [vote, setVote] = useState<Vote | null>(null);
+  const [pings, setPings] = useState(false);
+  /** The team that gave up, if the match ended by surrender. */
+  const [surrendered, setSurrendered] = useState(0);
   const myHero = client.init.heroes.find(h => h.playerId === client.init.you)!;
   const def: HeroDef = useMemo(() => catalog.heroes.find(h => h.id === myHero.hero)!, [catalog, myHero.hero]);
   const duel = client.map.type === 'duel';
@@ -95,7 +99,19 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
       setTick(t => t + 1);
       if (miniRef.current) r.drawMinimap(miniRef.current);
     }, 100);
-    return () => { window.clearTimeout(id); cancelAnimationFrame(raf); window.clearInterval(hud); window.removeEventListener('resize', onResize); input.dispose(); };
+    // Teammates' pings and the team's surrender vote.
+    const offSignal = net.on('signal', s => {
+      r.addSignal(s.kind, s.x, s.y);
+      const from = client.hero(s.u);
+      const look = SIGNAL_LOOK[s.kind];
+      if (look && from) setFeed(list => [...list.slice(-4), { id: Math.random(), text: `${look.icon} ${from.name}: ${look.text}`, tone: 'ally', at: performance.now() }]);
+      sfx.play('ui'); buzz(15);
+    });
+    const offVote = net.on('vote', v => {
+      setVote(v.active ? v : null);
+      if (v.result === 'failed') setToast({ text: 'Surrender vote failed — fight on!', at: performance.now() });
+    });
+    return () => { window.clearTimeout(id); cancelAnimationFrame(raf); window.clearInterval(hud); window.removeEventListener('resize', onResize); input.dispose(); offSignal(); offVote(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
@@ -159,6 +175,10 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
         if (f.u === me) buzz([30, 30, 50]);
         break;
       case 'respawn': if (f.u === me) { setRecap(null); hurt.current.clear(); } break;
+      case 'surrender':
+        setSurrendered(f.tm ?? 0); setVote(null);
+        say(f.tm === team ? 'Your team surrendered' : 'The enemy surrendered!', f.tm === team ? 'bad' : 'good');
+        break;
       case 'lvl':
         if (f.u === me && !duel) {
           say(f.v === catalog.ultLevel ? `Level ${f.v} — learn your ultimate: ${def.abilities[4].name}!` : (f.v ?? 0) < catalog.ultLevel ? `Level ${f.v} — learn a new spell!` : `Level ${f.v}!`, 'good');
@@ -201,11 +221,26 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
   const spectating = rendererRef.current?.spectating ? client.hero(rendererRef.current.spectating) : undefined;
 
   const [leaving, setLeaving] = useState(false);
+  const sendPing = (kind: SignalKind, x?: number, y?: number) => {
+    setPings(false);
+    const u = client.myUnit();
+    if (x == null || y == null) { if (!u) return; x = u.rx; y = u.ry; }
+    void net.signal(kind, x, y).then(e => { if (e === 'slow') setToast({ text: 'Easy — one ping at a time', at: performance.now() }); });
+  };
+  /** Tapping the minimap pings "go here" at that spot. */
+  const pingMinimap = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const b = e.currentTarget.getBoundingClientRect();
+    sendPing('go', (e.clientX - b.left) / b.width * client.map.w, (e.clientY - b.top) / b.height * client.map.h);
+  };
+  const surrender = async (yes: boolean) => {
+    const e = await net.surrender(yes);
+    if (e) { setToast({ text: e, at: performance.now() }); sfx.play('nope'); }
+  };
   const [chatOpen, setChatOpen] = useState(false);
   const picking = duel && state === 'PLAYING' && snap?.rp === 0 && !!me && me.dq.length > 0;
 
   return (
-    <div className="match">
+    <div className={`match ${coarse ? 'touch' : 'mouse'}`}>
       <canvas ref={canvasRef} className="match-canvas" />
       {coarse && <Joystick input={inputRef} />}
 
@@ -230,15 +265,37 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
         {spectating && <div className="warden-timer card spectate">👁 Watching {spectating.name}</div>}
       </div>
       <div className="hud-tl">
-        <canvas ref={miniRef} width={240} height={120} className="minimap card" />
+        <canvas ref={miniRef} width={240} height={120} className="minimap card" onPointerDown={pingMinimap} title="Tap to ping “go here” for your team" />
         <div className="hud-buttons">
           <button className="icon-btn card" onClick={() => setBoard(b => !b)} title="Scoreboard (Tab)">☰</button>
           <button className={`icon-btn card ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen(o => !o)} title="Chat (Enter)">💬</button>
+          <button className={`icon-btn card ${pings ? 'on' : ''}`} onClick={() => setPings(o => !o)} title="Ping your team">📍</button>
           <SettingsButton />
+          {!duel && <button className="icon-btn card" onClick={() => void surrender(true)} title="Surrender (vote, after 5 minutes)">🏳</button>}
           <button className="icon-btn card" onClick={() => setLeaving(true)} title="Leave">⏏</button>
           <span className="ping">{net.ping} ms</span>
         </div>
+        {pings && (
+          <div className="ping-menu card">
+            {(['attack', 'danger', 'omw', 'help'] as const).map(k => (
+              <button key={k} style={{ ['--c' as string]: SIGNAL_LOOK[k].color }} onClick={() => sendPing(k)}><b>{SIGNAL_LOOK[k].icon}</b><span>{SIGNAL_LOOK[k].text}</span></button>
+            ))}
+            <small>or tap the map to say “go here”</small>
+          </div>
+        )}
       </div>
+      {vote && vote.active && (
+        <div className="vote card">
+          <b>🏳 {vote.by} wants to surrender</b>
+          <span className="vote-count">{vote.yes} / {vote.needed} needed{vote.no ? ` · ${vote.no} no` : ''}</span>
+          {vote.you == null ? (
+            <div className="vote-actions">
+              <button className="btn small danger" onClick={() => void surrender(true)}>Surrender</button>
+              <button className="btn small" onClick={() => void surrender(false)}>Fight on</button>
+            </div>
+          ) : <small>You voted {vote.you ? 'to surrender' : 'to fight on'}</small>}
+        </div>
+      )}
       <div className="feed">
         {feed.filter(f => now - f.at < 7000).map(f => (
           <div key={f.id} className={`feed-row card ${f.tone}`}>
@@ -354,7 +411,8 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
       )}
       {(state === 'VICTORY' || state === 'DEFEAT') && result && (
         <Result state={state} result={result} rewards={rewards} client={client} onLobby={onLobby} onLeave={onLeave}
-          onPlayAgain={() => onPlayAgain(client.map.type, room?.mode ?? client.init.heroes.filter(h => h.team === 1).length)} />
+          surrendered={surrendered}
+          onPlayAgain={() => onPlayAgain(client.map.type, room?.mode ?? client.init.heroes.filter(h => h.team === 1).length, !!room?.practice)} />
       )}
     </div>
   );
@@ -666,7 +724,7 @@ function Scoreboard({ client, onClose }: { client: MatchClient; onClose: () => v
   );
 }
 
-function Result({ state, result, rewards, client, onLobby, onLeave, onPlayAgain }: { state: GameState; result: MatchEnd; rewards: Rewards | null; client: MatchClient; onLobby: () => void; onLeave: () => void; onPlayAgain: () => void }) {
+function Result({ state, result, rewards, client, surrendered, onLobby, onLeave, onPlayAgain }: { state: GameState; result: MatchEnd; rewards: Rewards | null; client: MatchClient; surrendered: number; onLobby: () => void; onLeave: () => void; onPlayAgain: () => void }) {
   const win = state === 'VICTORY';
   useEffect(() => { sfx.play(win ? 'victory' : 'bossDie'); buzz(win ? [40, 40, 40, 40, 120] : [120]); }, [win]);
   const best = [...result.players].sort((a, b) => (b.k * 3 + b.a + (b.heroDamage ?? 0) / 1000) - (a.k * 3 + a.a + (a.heroDamage ?? 0) / 1000))[0];
@@ -678,7 +736,7 @@ function Result({ state, result, rewards, client, onLobby, onLeave, onPlayAgain 
       <Fit>
         <div className="result-body">
           <h1>{win ? 'Victory' : 'Defeat'}</h1>
-          <p>{TEAM_NAME[result.winner]} team {client.map.type === 'duel' ? 'won the duel' : 'destroyed the enemy Core'} in {fmtTime(result.duration)}</p>
+          <p>{surrendered ? `${TEAM_NAME[surrendered]} team surrendered after ${fmtTime(result.duration)}` : `${TEAM_NAME[result.winner]} team ${client.map.type === 'duel' ? 'won the duel' : 'destroyed the enemy Core'} in ${fmtTime(result.duration)}`}</p>
           <div className="result-cols">
             <div className="result-table parchment">
               <table>

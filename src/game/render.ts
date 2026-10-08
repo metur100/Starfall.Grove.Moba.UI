@@ -65,7 +65,21 @@ type Mob = { paint: (g: CanvasRenderingContext2D, en: CR.Creature, t: number, lo
 const withTrem = (f: (g: CanvasRenderingContext2D, en: CR.Creature, t: number, look: CR.Look, flash: boolean, trem: number) => void) =>
   (g: CanvasRenderingContext2D, en: CR.Creature, t: number, look: CR.Look, flash: boolean) => f(g, en, t, look, flash, 0);
 
+/** How each map ping looks: its glyph, colour and words. */
+export const SIGNAL_LOOK: Record<string, { icon: string; color: string; text: string }> = {
+  attack: { icon: '⚔', color: '#ff6b5a', text: 'Attack!' },
+  danger: { icon: '!', color: '#ffb347', text: 'Fall back!' },
+  omw: { icon: '➜', color: '#7ec8ff', text: 'On my way' },
+  help: { icon: '✚', color: '#8be08b', text: 'Need help!' },
+  go: { icon: '◎', color: '#ffe38a', text: 'Go here' },
+};
+
 export class Renderer {
+  /** Teammates' map pings, shown for a few seconds where they were placed. */
+  private signals: Array<{ kind: string; x: number; y: number; at: number }> = [];
+  addSignal(kind: string, x: number, y: number) {
+    this.signals = [...this.signals.filter(s => performance.now() - s.at < 4000).slice(-5), { kind, x, y, at: performance.now() }];
+  }
   readonly canvas: HTMLCanvasElement;
   readonly client: MatchClient;
   private g: CanvasRenderingContext2D;
@@ -316,7 +330,32 @@ export class Renderer {
     for (const u of C.units.values()) if (inView(u.rx, u.ry)) { this.drawBars(g, u); this.drawCastBar(g, u); }
     this.drawMotes(g, dt, view);
     this.drawTexts(g, dt);
+    this.drawSignals(g);
     this.drawOverlay(g, dt, me);
+  }
+
+  private drawSignals(g: CanvasRenderingContext2D) {
+    const now = performance.now();
+    for (const s of this.signals) {
+      const age = (now - s.at) / 1000;
+      if (age > 4) continue;
+      const look = SIGNAL_LOOK[s.kind] ?? SIGNAL_LOOK.go, fade = Math.min(1, (4 - age) * 2);
+      g.globalAlpha = fade;
+      // Two rings rippling out, a pin above, and the glyph in it.
+      for (let i = 0; i < 2; i++) {
+        const p = (age * 1.4 + i * .5) % 1;
+        g.strokeStyle = alpha(look.color, (1 - p) * .9); g.lineWidth = 4 * (1 - p) + 1;
+        g.beginPath(); g.ellipse(s.x, s.y, 20 + p * 70, (20 + p * 70) * .6, 0, 0, TAU); g.stroke();
+      }
+      const bob = Math.sin(age * 6) * 4, y = s.y - 70 + bob, pop = backOut(Math.min(1, age * 4));
+      g.save(); g.translate(s.x, y); g.scale(pop, pop);
+      g.fillStyle = INK; g.beginPath(); g.moveTo(-10, 18); g.lineTo(0, 40); g.lineTo(10, 18); g.closePath(); g.fill();
+      circle(g, 0, 0, 25, INK); circle(g, 0, 0, 21, look.color);
+      g.fillStyle = '#fff'; g.font = '900 24px Nunito, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 4; g.strokeStyle = INK; g.strokeText(look.icon, 0, 1); g.fillText(look.icon, 0, 1);
+      g.restore();
+      g.globalAlpha = 1;
+    }
   }
 
   /** Notices a unit going down or coming back, for the fall and the pop. */
@@ -1256,6 +1295,15 @@ export class Renderer {
       if (!isHero(u.k) || u.st & ST.dead) continue;
       const mine = u.i === C.me?.u;
       dot(u.rx, u.ry, mine ? 5.5 : 4.5, mine ? '#ffe38a' : TEAM_COLOR[u.tm], mine ? '#fff' : INK);
+    }
+    const now = performance.now();
+    for (const s of this.signals) {
+      const age = (now - s.at) / 1000;
+      if (age > 4) continue;
+      const look = SIGNAL_LOOK[s.kind] ?? SIGNAL_LOOK.go, p = (age * 1.5) % 1;
+      g.strokeStyle = alpha(look.color, 1 - p); g.lineWidth = 2;
+      g.beginPath(); g.arc(s.x * sx, s.y * sy, 4 + p * 12, 0, TAU); g.stroke();
+      g.fillStyle = look.color; g.beginPath(); g.arc(s.x * sx, s.y * sy, 4, 0, TAU); g.fill();
     }
     const halfW = this.w / 2 / this.scale, halfH = this.h / 2 / this.scale;
     g.strokeStyle = 'rgba(255,244,222,.8)'; g.lineWidth = 1.5;

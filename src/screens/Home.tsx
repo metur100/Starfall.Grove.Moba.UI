@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { net, type NetStatus } from '../net/connection';
-import type { Catalog, LeaderRow, MapInfo, MatchType, Profile, QueueStatus, RoomListing } from '../net/protocol';
+import type { Catalog, LeaderRow, MapInfo, MatchType, Profile, Quest, QueueStatus, RoomListing } from '../net/protocol';
 import { HEROES } from '../game/heroes';
 import { heroBust } from '../game/art/bust';
 import { HeroStage } from '../ui/HeroStage';
@@ -100,9 +100,9 @@ function PlayTab({ catalog, profile, queue, online }: { catalog: Catalog | null;
   const hero = profile ? favourite(profile) : 'mira';
   const searching = queue.state !== 'idle';
 
-  const find = async () => {
+  const find = async (bots = false) => {
     setErr('');
-    const e = await net.findMatch(type, mode);
+    const e = await (bots ? net.playBots(type, mode) : net.findMatch(type, mode));
     if (e) { setErr(e); sfx.play('nope'); } else sfx.play('ui');
   };
 
@@ -112,6 +112,7 @@ function PlayTab({ catalog, profile, queue, online }: { catalog: Catalog | null;
         <HeroStage hero={hero} skin={profile?.equipped[hero]} size={190} />
         <div className="play-stage-foot">
           <b>{HEROES[hero] && catalog?.heroes.find(h => h.id === hero)?.name}</b>
+          {profile?.quests?.length ? <Quests quests={profile.quests} /> : null}
           {profile && <span className={`first-win ${profile.firstWinReady ? 'ready' : ''}`}>{profile.firstWinReady ? <>First win of the day: <Coins value={catalog?.shop.firstWinBonus ?? 150} /></> : 'First-win bonus collected · back tomorrow'}</span>}
         </div>
       </div>
@@ -129,13 +130,37 @@ function PlayTab({ catalog, profile, queue, online }: { catalog: Catalog | null;
             <span className="spinner" /> {queue.state === 'found' ? 'Match found!' : `Searching ${fmtWait(queue.waited)}`} <small>Cancel</small>
           </button>
         ) : (
-          <button className="btn primary big find" disabled={!online || !profile} onClick={find}>Find match <b>→</b></button>
+          <div className="find-row">
+            <button className="btn primary big find" disabled={!online || !profile} onClick={() => find()}>Find match <b>→</b></button>
+            <button className="btn find-bots" disabled={!online || !profile} onClick={() => find(true)} title="Practice against bots: starts at once, unranked, ¾ coins"><b>🤖</b><span>vs Bots</span></button>
+          </div>
         )}
         <p className="hint">{searching && queue.state === 'searching'
-          ? queue.searching > 1 ? `${queue.searching} players looking for ${queue.mode}v${queue.mode} ${queue.type}.` : queue.botsIn > 0 ? `Nobody else yet — bots fill empty seats in ${queue.botsIn}s.` : 'Filling empty seats with bots…'
-          : 'Matched with players near your rating. If too few are around, bots fill the empty seats.'}</p>
+          ? queue.searching > 1 ? `${queue.searching} players looking for ${queue.mode}v${queue.mode} ${queue.type}.` : queue.offerIn > 0 ? `Looking for rivals near your rank… (bots on offer in ${queue.offerIn}s)` : 'Still looking for rivals…'
+          : 'Matched with players near your rating. vs Bots starts a practice match at once (unranked, ¾ coins).'}</p>
         {err && <p className="err">{err}</p>}
       </div>
+    </div>
+  );
+}
+
+/** Today's three quests: what to do, how far along, and what each pays. */
+function Quests({ quests }: { quests: Quest[] }) {
+  const left = useMemo(() => { const d = new Date(); const end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1); return Math.max(1, Math.round((end - d.getTime()) / 3600000)); }, []);
+  return (
+    <div className="quests">
+      <header><b>Daily quests</b><small>new in {left}h</small></header>
+      {quests.map(q => {
+        const done = q.progress >= q.goal;
+        return (
+          <div key={q.id} className={`quest ${done ? 'done' : ''}`}>
+            <span className="quest-text">{done ? '✓ ' : ''}{q.text}</span>
+            <span className="quest-bar"><i style={{ width: `${Math.min(100, q.progress / q.goal * 100)}%` }} /></span>
+            <em>{done ? 'Done' : q.goal >= 1000 ? `${Math.floor(q.progress / 100) / 10}k/${q.goal / 1000}k` : `${q.progress}/${q.goal}`}</em>
+            <Coins value={q.coins} />
+          </div>
+        );
+      })}
     </div>
   );
 }
