@@ -89,7 +89,7 @@ export function Auth({ status, guest, resetCode, onRetry, onResetDone }: { statu
           <div className="auth-links">
             {mode === 'login' && <button type="button" className="link" onClick={() => go('forgot')}>Forgot password?</button>}
             {(mode === 'forgot' || mode === 'reset') && <button type="button" className="link" onClick={() => { if (mode === 'reset') onResetDone(); go('login'); }}>← Back to log in</button>}
-            {mode === 'register' && <small className="hint dark">By signing up you agree to the <a href="https://starfallgrove.eu/terms/" target="_blank" rel="noopener">terms</a> and the <a href="https://starfallgrove.eu/privacy/" target="_blank" rel="noopener">privacy policy</a>.</small>}
+            {mode === 'register' && <small className="hint dark">By signing up you agree to the <a href="https://starfallgrove.eu/terms/" target="_blank" rel="noopener">terms</a> and the <a href="https://starfallgrove.eu/minirift/privacy/" target="_blank" rel="noopener">privacy policy</a>.</small>}
           </div>
           {!online && <p className={`net-status ${status}`}>{status === 'connecting' || status === 'reconnecting' ? '◌ Connecting…' : <>● Offline <button type="button" className="link" onClick={onRetry}>Retry</button></>}</p>}
         </form>
