@@ -1005,3 +1005,9 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .fit-in.fixed .home-tabs::-webkit-scrollbar { display: none; }
 .fit-in.fixed .home-panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 241, 214, .35) transparent; border-radius: 18px; }
 .confirm-banner small { overflow-wrap: anywhere; }
+
+/* ───────────────────────────── links to the privacy policy, terms and help (settings, profile) */
+.legal-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; font: 800 12px var(--ui); }
+.legal-links a { color: inherit; opacity: .75; text-decoration: underline; text-underline-offset: 3px; }
+.legal-links a:hover { opacity: 1; }
+.prof-main .legal-links { justify-content: flex-start; color: var(--paper-muted); }

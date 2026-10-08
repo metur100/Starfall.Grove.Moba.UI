@@ -29,12 +29,24 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               <div className="setting"><span>Vibration</span><div className="seg">{[true, false].map(v => <button key={String(v)} className={prefs.haptics === v ? 'on' : ''} onClick={() => set(() => { prefs.haptics = v; if (v) buzz(30); })}>{v ? 'On' : 'Off'}</button>)}</div></div>
               <div className="setting"><span>Graphics <small>(next match)</small></span><div className="seg">{(['auto', 'high', 'low'] as Quality[]).map(q => <button key={q} className={prefs.quality === q ? 'on' : ''} onClick={() => set(() => { prefs.quality = q; })}>{q === 'auto' ? 'Auto' : q === 'high' ? 'Sharp' : 'Fast'}</button>)}</div></div>
               <button className="btn small" onClick={() => setHelp(true)}>How to play</button>
+              <LegalLinks />
             </div>
           )}
           {help && <button className="btn small" onClick={() => setHelp(false)}>← Back</button>}
         </div>
       </Fit>
     </div>
+  );
+}
+
+/** Mini Rift's privacy policy, terms and help on the website (the apps open them in the browser). */
+export function LegalLinks() {
+  return (
+    <nav className="legal-links" aria-label="Legal">
+      <a href="https://starfallgrove.eu/minirift/privacy/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="https://starfallgrove.eu/terms/" target="_blank" rel="noopener">Terms</a>
+      <a href="https://starfallgrove.eu/support/" target="_blank" rel="noopener">Help</a>
+    </nav>
   );
 }
 

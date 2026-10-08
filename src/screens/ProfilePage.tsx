@@ -7,6 +7,7 @@ import { Coins, RankBadge, XpBar } from '../ui/Bits';
 import { sfx } from '../game/audio';
 import { avatarArt } from '../game/art/avatar';
 import { AvatarPicker } from '../ui/AvatarPicker';
+import { LegalLinks } from '../ui/Settings';
 
 const ago = (iso: string) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -97,6 +98,7 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
           {deleting > 0 && <button className="link" onClick={() => setDeleting(0)}>Keep it</button>}
         </div>
         {msg && <p className="ok-msg">{msg}</p>}
+        <LegalLinks />
       </section>
       <section className="parchment prof-recent">
         <h3>Recent matches</h3>
