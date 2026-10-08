@@ -3,6 +3,7 @@ import { net, type NetStatus } from '../net/connection';
 import type { Catalog, LeaderRow, MapInfo, MatchType, Profile, Quest, QueueStatus, RoomListing } from '../net/protocol';
 import { HEROES } from '../game/heroes';
 import { avatarArt } from '../game/art/avatar';
+import { MapPreview } from '../ui/MapPreview';
 import { HeroStage } from '../ui/HeroStage';
 import { Fit } from '../ui/Fit';
 import { Coins, RankBadge, XpBar } from '../ui/Bits';
@@ -204,15 +205,18 @@ function CustomTab({ catalog, initialCode, online }: { catalog: Catalog | null; 
     <div className="custom">
       <section className="parchment custom-create">
         <h3>Create a room</h3>
-        <div className="type-pick">
-          <button className={type === 'battle' ? 'on' : ''} onClick={() => pickType('battle')}><b>⚔ Battle</b></button>
-          <button className={type === 'duel' ? 'on' : ''} onClick={() => pickType('duel')}><b>✦ Duel</b></button>
+        <div className="create-opts">
+          <div className="type-pick">
+            <button className={type === 'battle' ? 'on' : ''} onClick={() => pickType('battle')}><b>⚔ Battle</b></button>
+            <button className={type === 'duel' ? 'on' : ''} onClick={() => pickType('duel')}><b>✦ Duel</b></button>
+          </div>
+          <div className="seg">{[1, 2, 3].map(m => <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m}v{m}</button>)}</div>
         </div>
-        <div className="seg">{[1, 2, 3].map(m => <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m}v{m}</button>)}</div>
         <div className="maps">
           {maps.map(m => (
             <button key={m.id} className={`map-pick ${m.theme} ${map === m.id ? 'on' : ''}`} onClick={() => setMap(m.id)} title={m.blurb}>
-              {m.name}<em>{laneLabel(m)}</em>
+              <MapPreview id={m.id} />
+              <span className="map-name"><b>{m.name}</b><em>{laneLabel(m)}</em></span>
             </button>
           ))}
         </div>

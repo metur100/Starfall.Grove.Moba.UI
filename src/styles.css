@@ -1011,3 +1011,94 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .legal-links a { color: inherit; opacity: .75; text-decoration: underline; text-underline-offset: 3px; }
 .legal-links a:hover { opacity: 1; }
 .prof-main .legal-links { justify-content: flex-start; color: var(--paper-muted); }
+
+/* ───────────────────────────── match: the minimap with one row of buttons exactly as wide as it */
+.match { --mm-w: 240px; }
+.hud-tl { width: var(--mm-w); }
+.minimap-wrap { position: relative; }
+.minimap-wrap .minimap { display: block; width: var(--mm-w); height: calc(var(--mm-w) / 2); }
+.minimap-wrap .ping { position: absolute; right: 7px; bottom: 4px; font-size: 10px; pointer-events: none; opacity: .85; }
+.hud-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 5px; }
+.hud-buttons .icon-btn { width: 100%; height: auto; aspect-ratio: 1; font-size: 15px; }
+.ping-menu { width: var(--mm-w); }
+@media (max-width: 900px), (max-height: 560px) {
+  .match { --mm-w: 192px; }
+  .hud-buttons { gap: 4px; }
+  .hud-buttons .icon-btn { font-size: 13px; border-width: 1.5px; }
+}
+.vote.ask small { max-width: 30ch; }
+
+/* ───────────────────────────── phones and tablets: the spells in an arc round the attack, as in Starfall Grove */
+.match.touch .abilities { width: 250px; height: 250px; transform: none; }
+.match.touch .ability { width: 58px; height: 58px; }
+.match.touch .ability .ab-icon { font-size: 24px; }
+.match.touch .ability.attack { right: 0; bottom: 0; width: 96px; height: 96px; }
+.match.touch .ability.attack .ab-icon { font-size: 40px; }
+.match.touch .ability.a1 { right: 117px; bottom: 19px; }
+.match.touch .ability.a2 { right: 86px; bottom: 86px; }
+.match.touch .ability.a3 { right: 19px; bottom: 117px; }
+.match.touch .ability.a4 { right: 82px; bottom: 176px; }
+.match.touch .ability.a5 { right: 184px; bottom: 19px; }
+@media (max-width: 640px) { .match.touch .abilities { transform: scale(.82); transform-origin: right bottom; } }
+/* Phones held sideways: Starfall Grove's tighter landscape arc. */
+@media (max-height: 520px) {
+  .match.touch .abilities { width: 270px; height: 270px; transform: scale(.76); transform-origin: right bottom; right: calc(10px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .match.touch .ability.a1 { right: 105px; bottom: 0; }
+  .match.touch .ability.a2 { right: 105px; bottom: 65px; }
+  .match.touch .ability.a3 { right: 0; bottom: 105px; }
+  .match.touch .ability.a4 { right: 64px; bottom: 115px; }
+  .match.touch .ability.a5 { right: 172px; bottom: 0; }
+}
+
+/* ───────────────────────────── custom rooms: options on one row, maps as picture cards */
+.create-opts { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.create-opts .type-pick, .create-opts .seg { margin: 0; }
+.custom .maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.custom .map-pick { display: grid; gap: 4px; justify-items: stretch; padding: 4px 4px 5px; border-radius: 12px; min-width: 0; text-align: left; }
+.map-preview { display: block; width: 100%; height: auto; aspect-ratio: 2 / 1; border-radius: 8px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); background: rgba(0, 0, 0, .15); }
+.map-preview.empty { aspect-ratio: 2 / 1; }
+.map-name { display: grid; padding: 0 3px; min-width: 0; line-height: 1.15; }
+.map-name b { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-name em { font-style: normal; font-size: 10px; opacity: .9; }
+.custom .map-pick.on { box-shadow: 0 0 0 2px var(--edge), 0 0 0 4px var(--paper-ink); }
+
+/* The open tab stays in its column (it used to slide right, over the panel beside it): gold edge and glow instead. */
+.home-tabs .tab.on { transform: none; box-shadow: 0 0 0 1.5px var(--ink), 0 0 16px rgba(242, 201, 106, .45), var(--shadow); }
+
+/* ───────────────────────────── profile: two balanced cards that fit the menu without scrolling */
+.fit-in.fixed .profile-page { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; height: 100%; }
+.profile-page .prof-main, .profile-page .prof-recent { align-content: start; gap: 9px; }
+.prof-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.prof-head .prof-av { width: 60px; height: 60px; }
+.prof-who { display: grid; min-width: 0; gap: 1px; }
+.prof-user { display: flex; align-items: center; gap: 6px; font: 900 18px var(--ui); min-width: 0; }
+.prof-user .rename-link { font-size: 13px; text-decoration: none; padding: 0 4px; }
+.prof-who small { color: var(--paper-muted); font-weight: 700; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 6px 10px; border-radius: 10px; background: linear-gradient(180deg, #fff1c9, #ffe2a0); border: 1.5px solid var(--gold, #f2c96a); font-size: 12px; font-weight: 700; }
+.confirm-strip .link { font-size: 12px; }
+.confirm-strip .sent { flex-basis: 100%; color: #2f7a28; font-weight: 800; }
+.prof-ranks { gap: 10px; }
+.prof-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; margin-top: auto; }
+.prof-foot .link { color: var(--paper-muted); font-size: 12px; }
+.prof-foot .danger-link { color: #b2302a; }
+.prof-foot .legal-links { justify-content: flex-start; color: var(--paper-muted); gap: 4px 14px; font-size: 12px; }
+.prof-recent .prof-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+.prof-recent .prof-stats b { font-size: 14px; }
+.prof-recent h3 { font-size: 16px; }
+.profile-page .recent-rows { max-height: none; overflow: visible; }
+.profile-page .recent-row { padding: 3px 8px 3px 3px; }
+.profile-page .recent-row img { width: 30px; height: 30px; }
+.fit-in.fixed .custom { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); }
+.create-opts { align-items: center; }
+.create-opts .type-pick button { padding: 7px 10px; }
+.create-opts .seg { flex-wrap: nowrap; justify-self: stretch; }
+.custom .maps { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.custom .map-pick em { justify-self: start; padding: 1px 6px; }
+.custom-join .room-list { max-height: none; }
+.custom .map-name b { white-space: normal; overflow: visible; font-size: 11.5px; line-height: 1.1; min-height: 2.2em; display: flex; align-items: center; }
+/* The ladder fills its panel; only its list of players scrolls, when there are more than fit. */
+.fit-in.fixed .ladder { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); align-content: stretch; }
+.fit-in.fixed .ladder-rows { max-height: none; min-height: 0; align-content: start; overscroll-behavior: contain; }
+.fit-in.fixed .home-panel { grid-template-rows: minmax(0, 1fr); }
+/* Tablets: the "learn a spell" hint sits above the spell arc, not over its top button. */
+@media (min-height: 521px) { .match.touch .learn-hint { bottom: calc(272px + env(safe-area-inset-bottom)); } }

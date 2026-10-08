@@ -232,6 +232,8 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
     const b = e.currentTarget.getBoundingClientRect();
     sendPing('go', (e.clientX - b.left) / b.width * client.map.w, (e.clientY - b.top) / b.height * client.map.h);
   };
+  // Surrendering asks "are you sure?" first.
+  const [askSurrender, setAskSurrender] = useState(false);
   const surrender = async (yes: boolean) => {
     const e = await net.surrender(yes);
     if (e) { setToast({ text: e, at: performance.now() }); sfx.play('nope'); }
@@ -265,15 +267,17 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
         {spectating && <div className="warden-timer card spectate">👁 Watching {spectating.name}</div>}
       </div>
       <div className="hud-tl">
-        <canvas ref={miniRef} width={240} height={120} className="minimap card" onPointerDown={pingMinimap} title="Tap to ping “go here” for your team" />
+        <div className="minimap-wrap">
+          <canvas ref={miniRef} width={240} height={120} className="minimap card" onPointerDown={pingMinimap} title="Tap to ping “go here” for your team" />
+          <span className="ping">{net.ping} ms</span>
+        </div>
         <div className="hud-buttons">
           <button className="icon-btn card" onClick={() => setBoard(b => !b)} title="Scoreboard (Tab)">☰</button>
           <button className={`icon-btn card ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen(o => !o)} title="Chat (Enter)">💬</button>
           <button className={`icon-btn card ${pings ? 'on' : ''}`} onClick={() => setPings(o => !o)} title="Ping your team">📍</button>
           <SettingsButton />
-          {!duel && <button className="icon-btn card" onClick={() => void surrender(true)} title="Surrender (vote, after 5 minutes)">🏳</button>}
+          {!duel && <button className={`icon-btn card ${askSurrender ? 'on' : ''}`} onClick={() => { setAskSurrender(a => !a); sfx.play('ui'); }} title="Surrender (vote, after 5 minutes)">🏳</button>}
           <button className="icon-btn card" onClick={() => setLeaving(true)} title="Leave">⏏</button>
-          <span className="ping">{net.ping} ms</span>
         </div>
         {pings && (
           <div className="ping-menu card">
@@ -284,6 +288,16 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
           </div>
         )}
       </div>
+      {askSurrender && !(vote && vote.active) && (
+        <div className="vote card ask">
+          <b>🏳 Surrender this match?</b>
+          <small>Your team votes on it. If enough of you agree, the match ends as a loss.</small>
+          <div className="vote-actions">
+            <button className="btn small danger" onClick={() => { setAskSurrender(false); void surrender(true); }}>Yes, surrender</button>
+            <button className="btn small" onClick={() => setAskSurrender(false)}>Keep fighting</button>
+          </div>
+        </div>
+      )}
       {vote && vote.active && (
         <div className="vote card">
           <b>🏳 {vote.by} wants to surrender</b>

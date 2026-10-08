@@ -48,16 +48,19 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
   const kda = p.games ? `${(p.kills / p.games).toFixed(1)} / ${(p.deaths / p.games).toFixed(1)} / ${(p.assists / p.games).toFixed(1)}` : '—';
   const heroName = (id: string) => catalog.heroes.find(h => h.id === id)?.name ?? id;
 
+  // The newest matches that fit beside the stats, so the page never scrolls.
+  const recent = p.recent.slice(0, 4);
   return (
     <div className="profile-page">
       {picking && <AvatarPicker catalog={catalog} profile={p} onClose={() => setPicking(false)} />}
       <section className="parchment prof-main">
-        <div className="prof-account">
+        <div className="prof-head">
           <button className="prof-av" title="Change your picture" onClick={() => { setPicking(true); sfx.play('page'); }}><img src={avatarArt(p.avatar)} alt="Your picture" /><em>✎</em></button>
-          <span><small>Username</small><b>{p.username}</b></span>
-          {!renaming && <button className="link rename-link" onClick={() => { setRenaming(true); setNewName(p.username ?? ''); setRenameErr(''); setMsg(''); }}>✎ Change</button>}
-          <span><small>Email</small><b>{p.email}</b></span>
-          <button className="btn small" onClick={() => { sfx.play('page'); void net.logout(); }}>Log out</button>
+          <div className="prof-who">
+            <b className="prof-user">{p.username}{!renaming && <button className="link rename-link" title="Change your username" onClick={() => { setRenaming(true); setNewName(p.username ?? ''); setRenameErr(''); setMsg(''); }}>✎</button>}</b>
+            <small>{p.email}</small>
+          </div>
+          <button className="btn small" title="Log in again on any device with your username and password" onClick={() => { sfx.play('page'); void net.logout(); }}>Log out</button>
         </div>
         {renaming && (
           <form className="rename-form" onSubmit={rename}>
@@ -73,11 +76,10 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
           </form>
         )}
         {!p.emailConfirmed && (
-          <div className="confirm-banner">
-            <span className="ico" aria-hidden="true">✉</span>
-            <span><b>Please confirm your email</b><small>We sent a link to {p.email} when you signed up. It keeps your account safe and lets you reset your password.</small></span>
-            <button className="btn small" onClick={resend}>Send again</button>
-            {sent && <p className="sent">{sent}</p>}
+          <div className="confirm-strip" title={`We sent a link to ${p.email} when you signed up. It keeps your account safe and lets you reset your password.`}>
+            <span>✉ <b>Confirm your email</b> with the link we sent you</span>
+            <button className="link" onClick={resend}>Send again</button>
+            {sent && <small className="sent">{sent}</small>}
           </div>
         )}
         <div className="prof-level"><XpBar level={p.level} xp={p.xp} next={p.xpNext} /><small>{p.xp} / {p.xpNext} XP · next level pays <Coins value={(p.level + 1) % 5 === 0 ? 400 : 100} /></small></div>
@@ -85,6 +87,14 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
           <div><small>⚔ Battle</small><RankBadge rank={p.rank.battle} rating={p.rating.battle} /></div>
           <div><small>✦ Duel</small><RankBadge rank={p.rank.duel} rating={p.rating.duel} /></div>
         </div>
+        {msg && <p className="ok-msg">{msg}</p>}
+        <div className="prof-foot">
+          <button className={`link ${deleting ? 'danger-link' : ''}`} onClick={del}>{deleting ? 'Tap again to delete everything for good' : 'Delete my profile'}</button>
+          {deleting > 0 && <button className="link" onClick={() => setDeleting(0)}>Keep it</button>}
+          <LegalLinks />
+        </div>
+      </section>
+      <section className="parchment prof-recent">
         <div className="prof-stats">
           <span><b>{p.games}</b><small>Games</small></span>
           <span><b>{p.games ? Math.round(p.wins / p.games * 100) : 0}%</b><small>Wins</small></span>
@@ -92,19 +102,10 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
           <span><b>{p.heroes.length}/{HERO_ORDER.length}</b><small>Heroes</small></span>
           <span><b>{p.skins.length}/{catalog.shop.skins.length}</b><small>Skins</small></span>
         </div>
-        <p className="hint dark">Play on any device: log in there with your username and password. Forgot it? Log out and use “Forgot password?”.</p>
-        <div className="prof-delete">
-          <button className={`link ${deleting ? 'danger-link' : ''}`} onClick={del}>{deleting ? 'Tap again: delete my account, coins, heroes, skins and friends for good' : 'Delete my profile'}</button>
-          {deleting > 0 && <button className="link" onClick={() => setDeleting(0)}>Keep it</button>}
-        </div>
-        {msg && <p className="ok-msg">{msg}</p>}
-        <LegalLinks />
-      </section>
-      <section className="parchment prof-recent">
         <h3>Recent matches</h3>
-        {p.recent.length === 0 ? <p className="hint dark">No matches yet. Hit Play!</p> : (
+        {recent.length === 0 ? <p className="hint dark">No matches yet. Hit Play!</p> : (
           <div className="recent-rows">
-            {p.recent.map((r, i) => (
+            {recent.map((r, i) => (
               <div key={i} className={`recent-row ${r.won ? 'won' : 'lost'}`}>
                 {isHero(r.hero) && <img src={heroBust(r.hero, p.equipped[r.hero])} alt="" />}
                 <span className="res">{r.won ? 'Victory' : 'Defeat'}<small>{r.type === 'duel' ? '✦ Duel' : '⚔ Battle'} {r.mode}v{r.mode}{r.ranked ? ' · ranked' : ''}</small></span>

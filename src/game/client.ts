@@ -187,4 +187,29 @@ export class MatchClient {
   hero(uid: number) { return this.heroes.get(uid); }
   myUnit() { return this.units.get(this.me?.u ?? -1); }
   isEnemy(u: { tm: number }) { return u.tm !== 0 && u.tm !== this.team; }
+
+  /**
+   * Fog of war: the enemy units this team can see right now. An enemy hero or minion shows only while one of the
+   * team's heroes, minions, towers or its Core is close enough to see it; towers and Cores always show. Null in a
+   * duel (a small arena: nothing to hide).
+   */
+  vision(): Set<number> | null {
+    if (this.map.type === 'duel') return null;
+    const eyes: Array<[number, number, number]> = [];
+    for (const u of this.units.values()) {
+      if (u.tm !== this.team || u.st & ST.dead) continue;
+      const r = this.heroes.has(u.i) ? SIGHT.hero : SIGHT[u.k] ?? SIGHT.other;
+      eyes.push([u.rx, u.ry, r * r]);
+    }
+    const seen = new Set<number>();
+    for (const u of this.units.values()) {
+      if (!this.isEnemy(u)) continue;
+      if (u.k === 'tower' || u.k === 'core') { seen.add(u.i); continue; }
+      for (const [x, y, r2] of eyes) { const dx = u.rx - x, dy = u.ry - y; if (dx * dx + dy * dy <= r2) { seen.add(u.i); break; } }
+    }
+    return seen;
+  }
 }
+
+/** How far each kind of unit sees, in world units (heroes: SIGHT.hero; summons and the rest: SIGHT.other). */
+const SIGHT: Record<string, number> = { hero: 760, tower: 800, core: 900, melee: 520, ranged: 560, heavy: 520, other: 420 };

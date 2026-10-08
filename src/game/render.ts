@@ -49,6 +49,8 @@ const THEMES: Record<string, Theme> = {
     env: 'embers', flowers: ['#ffb347', '#ff7a3d'], decor: ['grass', 'shard', 'shroom'], pool: ['#ff8a3a', '#a3301a'], wolf: 'cinderhound',
   },
 };
+/** A map theme's colours (meadow when unknown), for things drawn outside a match, like map previews. */
+export const paletteOf = (theme: string) => (THEMES[theme] ?? THEMES.meadow).palette;
 
 type PKind = 'dot' | 'star' | 'leaf' | 'snow' | 'smoke' | 'shard' | 'ember';
 type Particle = { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; color: string; size: number; kind: PKind; rot: number; glow: boolean };
@@ -279,6 +281,9 @@ export class Renderer {
     const g = this.g, C = this.client, me = C.myUnit();
     this.consumeFx();
     for (const u of C.units.values()) this.trackLife(u);
+    // Fog of war: enemies nobody on the team can see aren't drawn (here or on the minimap).
+    this.seen = C.vision();
+    const shown = (u: ViewUnit) => this.isShown(u);
     // Knocked out of a duel round: watch a teammate who is still fighting.
     this.spectating = 0;
     if (me && me.st & ST.dead && this.duel) {
@@ -313,7 +318,7 @@ export class Renderer {
     const draws: Array<{ y: number; run: () => void }> = [];
     for (const p of this.props) if (inView(p.o.x, p.o.y)) draws.push({ y: p.o.y, run: () => g.drawImage(p.b.c, p.o.x + p.b.l, p.o.y + p.b.t, p.b.w, p.b.h) });
     for (const u of C.units.values()) {
-      if (!inView(u.rx, u.ry)) continue;
+      if (!inView(u.rx, u.ry) || !shown(u)) continue;
       if (u.st & ST.dead && u.k !== 'tower' && u.k !== 'core') {
         // A fallen hero topples and fades before it is gone.
         if (isHero(u.k) && this.t - (this.life.get(u.i)?.at ?? -9) < 1.6) draws.push({ y: u.ry, run: () => this.drawDeath(g, u) });
@@ -327,7 +332,7 @@ export class Renderer {
     this.drawProjectiles(g, inView);
     this.drawSlashes(g, dt);
     this.drawEffects(g, dt);
-    for (const u of C.units.values()) if (inView(u.rx, u.ry)) { this.drawBars(g, u); this.drawCastBar(g, u); }
+    for (const u of C.units.values()) if (inView(u.rx, u.ry) && shown(u)) { this.drawBars(g, u); this.drawCastBar(g, u); }
     this.drawMotes(g, dt, view);
     this.drawTexts(g, dt);
     this.drawSignals(g);
@@ -1273,6 +1278,10 @@ export class Renderer {
     this.texts = this.texts.filter(t => t.life > 0);
   }
 
+  /** The enemies this team can see this frame (null: everything shows, as in a duel). */
+  private seen: Set<number> | null = null;
+  private isShown(u: ViewUnit) { return !this.seen || !this.client.isEnemy(u) || this.seen.has(u.i); }
+
   // ───────────────────────────── minimap
 
   drawMinimap(mc: HTMLCanvasElement) {
@@ -1289,10 +1298,10 @@ export class Renderer {
     if (m.objective) { const [ox, oy] = m.objective; if ((C.latest?.ob ?? 1) === 0) dot(ox, oy, 5, '#c9b6ff'); else dot(ox, oy, 3, '#6a5a8a'); }
     for (const u of C.units.values()) {
       if (u.k === 'tower' || u.k === 'core') { if (!(u.st & ST.dead)) { g.fillStyle = INK; g.fillRect(u.x * sx - 5, u.y * sy - 5, 10, 10); g.fillStyle = TEAM_COLOR[u.tm]; g.fillRect(u.x * sx - 3.5, u.y * sy - 3.5, 7, 7); } continue; }
-      if (u.k === 'melee' || u.k === 'ranged' || u.k === 'heavy') dot(u.rx, u.ry, 1.8, TEAM_LIGHT[u.tm], 'rgba(0,0,0,0)');
+      if ((u.k === 'melee' || u.k === 'ranged' || u.k === 'heavy') && this.isShown(u)) dot(u.rx, u.ry, 1.8, TEAM_LIGHT[u.tm], 'rgba(0,0,0,0)');
     }
     for (const u of C.units.values()) {
-      if (!isHero(u.k) || u.st & ST.dead) continue;
+      if (!isHero(u.k) || u.st & ST.dead || !this.isShown(u)) continue;
       const mine = u.i === C.me?.u;
       dot(u.rx, u.ry, mine ? 5.5 : 4.5, mine ? '#ffe38a' : TEAM_COLOR[u.tm], mine ? '#fff' : INK);
     }
