@@ -952,3 +952,19 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .select-body > *, .hero-grid, .hero-card { min-width: 0; }
 .select-left { grid-template-columns: minmax(0, 1fr); }
 .hero-card b, .hero-card small { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ───────────────────────────── account: changing the username, confirming the email */
+.rename-link { font-size: 13px; }
+.rename-form { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: rgba(59, 42, 47, .06); border: 2px dashed rgba(59, 42, 47, .2); }
+.rename-form input { width: 100%; }
+.rename-actions { display: flex; align-items: center; gap: 12px; }
+.rename-form .err { margin: 0; }
+.confirm-banner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+  background: linear-gradient(180deg, #fff1c9, #ffe2a0); border: 2px solid var(--gold, #f2c96a); box-shadow: 0 0 0 1.5px rgba(59, 42, 47, .35); }
+.confirm-banner .ico { font-size: 26px; line-height: 1; }
+.confirm-banner > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; }
+.confirm-banner small { color: var(--paper-muted); font-weight: 600; line-height: 1.35; }
+.confirm-banner .sent { grid-column: 1 / -1; margin: 0; font-weight: 800; color: #2f7a28; }
+@media (max-width: 520px) { .confirm-banner { grid-template-columns: auto minmax(0, 1fr); } .confirm-banner .btn { grid-column: 1 / -1; justify-self: start; } }
+.invite-toast.notice.ok { border-color: #7fd46a; }
+.invite-toast.notice.bad { border-color: #ff7a5a; }

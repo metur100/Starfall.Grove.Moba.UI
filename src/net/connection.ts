@@ -183,6 +183,10 @@ class Net {
   login(username: string, password: string) { return this.auth('Login', username, password); }
   resetPassword(code: string, password: string) { return this.auth('ResetPassword', code, password); }
   forgotPassword(email: string) { return this.act('ForgotPassword', email); }
+  /** Confirms the email with the code from the welcome email's link (?confirm=…). */
+  confirmEmail(code: string) { return this.shop('ConfirmEmail', code); }
+  resendConfirmation() { return this.act('ResendConfirmation'); }
+  changeUsername(username: string) { return this.shop('ChangeUsername', username); }
   async logout() { try { await this.call('Logout'); } catch { /* signed out on this device anyway */ } await this.fresh(); }
 
   // ───────────────────────────── friends and chat

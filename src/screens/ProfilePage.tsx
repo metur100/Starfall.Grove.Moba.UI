@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { net } from '../net/connection';
 import type { Catalog, Profile } from '../net/protocol';
 import { HERO_ORDER, isHero } from '../game/heroes';
@@ -21,6 +21,26 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
     setDeleting(0); setMsg(e ?? 'Your profile was deleted. You start fresh.'); sfx.play(e ? 'nope' : 'page');
   };
 
+  // Changing the username: an inline field under the account row.
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [renameErr, setRenameErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const rename = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    const err = await net.changeUsername(newName.trim());
+    setBusy(false);
+    if (err) { setRenameErr(err); sfx.play('nope'); return; }
+    setRenaming(false); setRenameErr(''); setMsg('Your username is changed. Log in with the new one from now on.'); sfx.play('page');
+  };
+  const [sent, setSent] = useState('');
+  const resend = async () => {
+    const err = await net.resendConfirmation();
+    setSent(err ?? `A new link is on its way to ${p.email}. Check your inbox (and spam).`); sfx.play(err ? 'nope' : 'page');
+  };
+
   const kda = p.games ? `${(p.kills / p.games).toFixed(1)} / ${(p.deaths / p.games).toFixed(1)} / ${(p.assists / p.games).toFixed(1)}` : '—';
   const heroName = (id: string) => catalog.heroes.find(h => h.id === id)?.name ?? id;
 
@@ -29,9 +49,31 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
       <section className="parchment prof-main">
         <div className="prof-account">
           <span><small>Username</small><b>{p.username}</b></span>
+          {!renaming && <button className="link rename-link" onClick={() => { setRenaming(true); setNewName(p.username ?? ''); setRenameErr(''); setMsg(''); }}>✎ Change</button>}
           <span><small>Email</small><b>{p.email}</b></span>
           <button className="btn small" onClick={() => { sfx.play('page'); void net.logout(); }}>Log out</button>
         </div>
+        {renaming && (
+          <form className="rename-form" onSubmit={rename}>
+            <label className="field compact"><span>New username (3 to 16 letters, digits or _)</span>
+              <input value={newName} onChange={e => { setNewName(e.target.value); setRenameErr(''); }} maxLength={16} autoFocus autoComplete="username"
+                autoCapitalize="none" spellCheck={false} pattern="[A-Za-z0-9_]{3,16}" required />
+            </label>
+            <div className="rename-actions">
+              <button className="btn small primary" disabled={busy || newName.trim() === p.username}>{busy ? <span className="spinner" /> : null}Save</button>
+              <button type="button" className="link" onClick={() => setRenaming(false)}>Cancel</button>
+            </div>
+            {renameErr && <p className="err">{renameErr}</p>}
+          </form>
+        )}
+        {!p.emailConfirmed && (
+          <div className="confirm-banner">
+            <span className="ico" aria-hidden="true">✉</span>
+            <span><b>Please confirm your email</b><small>We sent a link to {p.email} when you signed up. It keeps your account safe and lets you reset your password.</small></span>
+            <button className="btn small" onClick={resend}>Send again</button>
+            {sent && <p className="sent">{sent}</p>}
+          </div>
+        )}
         <div className="prof-level"><XpBar level={p.level} xp={p.xp} next={p.xpNext} /><small>{p.xp} / {p.xpNext} XP · next level pays <Coins value={(p.level + 1) % 5 === 0 ? 400 : 100} /></small></div>
         <div className="prof-ranks">
           <div><small>⚔ Battle</small><RankBadge rank={p.rank.battle} rating={p.rating.battle} /></div>

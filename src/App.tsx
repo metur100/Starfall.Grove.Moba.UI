@@ -44,6 +44,15 @@ export default function App() {
   // A password reset link from the email: ?reset=<code>.
   const [resetCode, setResetCode] = useState(() => new URLSearchParams(location.search).get('reset') ?? '');
   const endReset = () => { setResetCode(''); history.replaceState(null, '', location.pathname); };
+  // The confirmation link from the welcome email: ?confirm=<code>. Answered once the server is reachable.
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const confirmEmail = async () => {
+    const code = new URLSearchParams(location.search).get('confirm');
+    if (!code) return;
+    history.replaceState(null, '', location.pathname);
+    const e = await net.confirmEmail(code);
+    setNotice(e ? { ok: false, text: e } : { ok: true, text: 'Your email is confirmed. Thank you, and welcome to Mini Rift!' });
+  };
   const s = useSocial();
 
   /** Which screen a room's phase belongs on. */
@@ -93,7 +102,7 @@ export default function App() {
       net.on('matchFound', setFound),
     ];
     void (async () => {
-      if (await net.connect()) { setCatalog(net.catalog); setProfile(net.profile); await net.rejoin(); }
+      if (await net.connect()) { setCatalog(net.catalog); setProfile(net.profile); await net.rejoin(); await confirmEmail(); }
     })();
     return () => offs.forEach(o => o());
   }, [follow, go]);
@@ -138,6 +147,12 @@ export default function App() {
         />
       )}
       {(state === 'MAIN_MENU' || state === 'LOBBY') && <QueuePill queue={queue} />}
+      {notice && state === 'MAIN_MENU' && (
+        <div className={`invite-toast card notice ${notice.ok ? 'ok' : 'bad'}`} role="status">
+          <span>{notice.ok ? '✦ ' : ''}{notice.text}</span>
+          <button className="btn small" onClick={() => setNotice(null)}>OK</button>
+        </div>
+      )}
       {found && queue.state === 'found' && !inMatch && <MatchFoundDialog found={found} />}
       {queue.state === 'searching' && queue.offer && !inMatch && <BotOfferDialog queue={queue} />}
       <div className="rotate-hint"><b>⟳</b><p>Turn your phone sideways to play</p></div>

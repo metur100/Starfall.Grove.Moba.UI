@@ -37,6 +37,8 @@ export type Profile = {
   username: string | null; email: string | null; requests: number;
   /** Today's three daily quests. */
   quests: Quest[];
+  /** Whether the player opened the confirmation link from the welcome email. */
+  emailConfirmed: boolean;
 };
 export type Quest = { id: string; text: string; progress: number; goal: number; coins: number };
 /** The team's surrender vote. result: set once, when it passed or failed. you: your vote, if any. */
