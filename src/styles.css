@@ -996,3 +996,12 @@ tr.me td { background: rgba(242, 201, 106, .35); }
 .av-pick.locked img { filter: grayscale(.85) brightness(.75); opacity: .7; }
 .av-pick em { position: absolute; top: 24px; left: 50%; translate: -50% 0; padding: 2px 7px; border-radius: 99px; background: rgba(47, 35, 48, .85); color: #fff4de; font: 800 10px var(--ui); font-style: normal; white-space: nowrap; }
 @media (max-height: 430px) { .av-pick img { width: 50px; height: 50px; } .av-pick em { top: 19px; } .av-grid { grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); } }
+
+/* ───────────────────────────── the main menu at one fixed size (Fit height): it fills the screen, panels scroll */
+.fit-in.fixed { align-items: center; }
+.fit-in.fixed > .home { height: 100%; max-height: 640px; grid-template-rows: auto minmax(0, 1fr); }
+.fit-in.fixed .home-body { min-height: 0; align-items: stretch; }
+.fit-in.fixed .home-tabs { align-content: start; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.fit-in.fixed .home-tabs::-webkit-scrollbar { display: none; }
+.fit-in.fixed .home-panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255, 241, 214, .35) transparent; border-radius: 18px; }
+.confirm-banner small { overflow-wrap: anywhere; }

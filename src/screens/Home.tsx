@@ -38,7 +38,9 @@ export function Home({ status, catalog, profile, queue, initialCode, onRetry }: 
   const badge = (t: Tab) => t === 'friends' ? (profile?.requests ?? 0) + social.unreadTotal() : 0;
 
   return (
-    <Fit className="screen">
+    // One fixed size for the whole menu (from the screen's height, not the tab's content): switching tabs never
+    // resizes the navigation or the text, and a long tab scrolls inside its panel.
+    <Fit className="screen" height={HOME_HEIGHT}>
       <div className="home">
         <header className="topbar">
           <div className="brand"><b>Mini Rift</b><small>Starfall Grove</small></div>
@@ -85,6 +87,9 @@ function Waiting({ online }: { online: boolean }) {
 }
 
 /** The hero shown on the play screen: the one played most, else the first owned. */
+/** The height the menu is designed for: shorter screens (phones held sideways) show it scaled down to fit. */
+const HOME_HEIGHT = 430;
+
 function favourite(p: Profile): HeroId {
   const best = Object.entries(p.heroStats).sort((a, b) => b[1][0] - a[1][0])[0]?.[0];
   return (best && best in HEROES ? best : p.heroes.find(h => h in HEROES) ?? 'mira') as HeroId;
