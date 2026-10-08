@@ -206,6 +206,7 @@ class Net {
   buySkin(skin: string) { return this.shop('BuySkin', skin); }
   equipSkin(hero: string, skin: string | null) { return this.shop('EquipSkin', hero, skin ?? ''); }
   setCharm(charm: string) { return this.shop('SetCharm', charm); }
+  setAvatar(avatar: string) { return this.shop('SetAvatar', avatar); }
   async leaderboard(type: MatchType): Promise<LeaderRow[]> { try { return await this.call<LeaderRow[]>('Leaderboard', type); } catch { return []; } }
 
   /** Deletes the account and profile on the server for good, then starts this device over. */

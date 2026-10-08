@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { net, type NetStatus } from '../net/connection';
 import type { Catalog, LeaderRow, MapInfo, MatchType, Profile, Quest, QueueStatus, RoomListing } from '../net/protocol';
 import { HEROES } from '../game/heroes';
-import { heroBust } from '../game/art/bust';
+import { avatarArt } from '../game/art/avatar';
 import { HeroStage } from '../ui/HeroStage';
 import { Fit } from '../ui/Fit';
 import { Coins, RankBadge, XpBar } from '../ui/Bits';
@@ -44,7 +44,7 @@ export function Home({ status, catalog, profile, queue, initialCode, onRetry }: 
           <div className="brand"><b>Mini Rift</b><small>Starfall Grove</small></div>
           {profile ? (
             <button className="me-chip card" onClick={() => go('profile')}>
-              <img src={heroBust(favourite(profile), profile.equipped[favourite(profile)])} alt="" />
+              <img className="me-av" src={avatarArt(profile.avatar)} alt="" />
               <span className="me-name"><b>{profile.name}</b><XpBar level={profile.level} xp={profile.xp} next={profile.xpNext} /></span>
             </button>
           ) : <div className="me-chip card ghosted">{online ? 'Signing in…' : 'Offline'}</div>}
@@ -248,7 +248,7 @@ function LadderTab({ online }: { online: boolean }) {
       <div className="ladder-rows">
         {rows === null ? <p className="hint dark">Loading…</p> : rows.length === 0 ? <p className="hint dark">Nobody has played a ranked {type} yet. Be the first!</p> : rows.map((r, i) => (
           <div key={i} className={`ladder-row ${r.name === me ? 'me' : ''}`}>
-            <span className="pos">{i + 1}</span><b>{r.name}</b><small>Lv {r.level}</small><RankBadge rank={r.rank} rating={r.rating} small /><em>{r.wins}W · {Math.round(r.wins / Math.max(1, r.games) * 100)}%</em>
+            <span className="pos">{i + 1}</span><img className="av-mini" src={avatarArt(r.avatar)} alt="" /><b>{r.name}</b><small>Lv {r.level}</small><RankBadge rank={r.rank} rating={r.rating} small /><em>{r.wins}W · {Math.round(r.wins / Math.max(1, r.games) * 100)}%</em>
           </div>
         ))}
       </div>

@@ -13,12 +13,17 @@ export function heroBust(hero: HeroId, skin?: string | null): string {
   const key = `${hero}|${skin ?? ''}`;
   const hit = cache.get(key); if (hit) return hit;
   if (typeof document === 'undefined') return '';
+  const url = heroBustCanvas(hero, skin).toDataURL('image/png');
+  cache.set(key, url); return url;
+}
+
+/** The portrait as a canvas (160 × 160), for drawing into other pictures. */
+export function heroBustCanvas(hero: HeroId, skin?: string | null): HTMLCanvasElement {
   cutter ??= new Cutter();
   const S = 160, c = document.createElement('canvas'); c.width = c.height = S;
   const g = c.getContext('2d')!;
   const k = 2.9;
   g.translate(S / 2, S * .5 + 27 * k); g.scale(k, k);
   cutter.stamp(g, 0, 0, [-34, -80, 68, 108], k, STICKER, gg => drawFigure(gg, skinFigure(hero, skin), { facing: 'front', dir: 1, walk: 0, moving: false, t: 1.7, arm: 'idle', blink: false }, heroHooks(hero, skinGear(skin), 0, 1.7)));
-  const url = c.toDataURL('image/png');
-  cache.set(key, url); return url;
+  return c;
 }

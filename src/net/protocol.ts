@@ -18,7 +18,9 @@ export type SkinDef = { id: string; hero: string; name: string; tier: SkinTier; 
 export type CharmDef = { id: string; name: string; text: string; cooldown: number; duelCooldown: number };
 export type RankDef = { name: string; min: number };
 /** What can be bought and chosen (Economy.cs). */
-export type Shop = { heroPrices: Record<string, number>; skins: SkinDef[]; charms: CharmDef[]; ranks: RankDef[]; firstWinBonus: number; starters: string[] };
+export type Shop = { heroPrices: Record<string, number>; skins: SkinDef[]; charms: CharmDef[]; ranks: RankDef[]; firstWinBonus: number; starters: string[]; avatars: AvatarDef[] };
+/** A profile picture (drawn by game/art/avatar.ts): free, or unlocked at a level. Hero portraits are "hero:<id>". */
+export type AvatarDef = { id: string; name: string; group: 'emblem' | 'creature'; level: number };
 export type Catalog = {
   heroes: HeroDef[]; basicTiers: UpgradeOption[][]; abilityTiers: UpgradeOption[][];
   basicCost: number[]; abilityCost: number[]; ultCost: number[]; ultLevel: number; maxLevel: number; maps: MapInfo[];
@@ -39,6 +41,8 @@ export type Profile = {
   quests: Quest[];
   /** Whether the player opened the confirmation link from the welcome email. */
   emailConfirmed: boolean;
+  /** The profile picture: the chosen one, else the hero played most ("hero:<id>"). */
+  avatar: string;
 };
 export type Quest = { id: string; text: string; progress: number; goal: number; coins: number };
 /** The team's surrender vote. result: set once, when it passed or failed. you: your vote, if any. */
@@ -48,7 +52,7 @@ export type SignalKind = 'attack' | 'danger' | 'omw' | 'help' | 'go';
 export type Signal = { u: number; kind: SignalKind; x: number; y: number };
 export type HelloResult = { ok: boolean; error: string | null; profile: Profile | null };
 export type AuthResult = { error: string | null; profile: Profile | null; token: string | null };
-export type Friend = { id: string; name: string; level: number; rank: string; online: boolean; status: string };
+export type Friend = { id: string; name: string; level: number; rank: string; online: boolean; status: string; avatar: string };
 export type FriendsList = { friends: Friend[]; requests: Friend[]; blocked: Friend[] };
 /** scope: "all" or "team" in a room or match, "friend" for a private message (to: the other player's id). */
 export type ChatMsg = { id: string; scope: 'all' | 'team' | 'friend'; fromId: string; from: string; text: string; at: number; team: number; to: string | null };
@@ -62,7 +66,7 @@ export type Rewards = {
   won: boolean; coins: number; xp: number; lines: RewardLine[]; levelFrom: number; xpFrom: number; xpNextFrom: number; levelTo: number; xpTo: number; xpNextTo: number;
   ranked: boolean; type: MatchType; ratingDelta: number; rating: number; rank: string; rankFrom: string;
 };
-export type LeaderRow = { name: string; level: number; rating: number; rank: string; wins: number; games: number };
+export type LeaderRow = { name: string; level: number; rating: number; rank: string; wins: number; games: number; avatar: string };
 export type RoomListing = { code: string; host: string; mode: number; map: string; type: MatchType; players: number; seats: number };
 
 export type Phase = 'lobby' | 'heroSelect' | 'loading' | 'starting' | 'playing' | 'ended';

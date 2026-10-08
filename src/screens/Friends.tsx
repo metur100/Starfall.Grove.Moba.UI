@@ -5,6 +5,7 @@ import type { Friend } from '../net/protocol';
 import { ChatBox, PlayerMenu } from '../ui/Chat';
 import { RankBadge } from '../ui/Bits';
 import { sfx } from '../game/audio';
+import { avatarArt } from '../game/art/avatar';
 
 /** Friends: add one by username, answer requests, see who is online and what they're doing, and message them. */
 export function Friends({ online }: { online: boolean }) {
@@ -39,6 +40,7 @@ export function Friends({ online }: { online: boolean }) {
             <h4>Requests</h4>
             {f.requests.map(r => (
               <div key={r.id} className="friend-row request">
+                <img className="av-mini" src={avatarArt(r.avatar)} alt="" />
                 <span className="fr-name"><b>{r.name}</b><small>Lv {r.level}</small></span>
                 <button className="btn small primary" onClick={() => answer(r.id, true)}>Accept</button>
                 <button className="link" onClick={() => answer(r.id, false)}>Decline</button>
@@ -50,7 +52,7 @@ export function Friends({ online }: { online: boolean }) {
           <h4>Friends {f ? <small>· {f.friends.filter(x => x.online).length} online</small> : null}</h4>
           {!f ? <p className="hint dark">Loading…</p> : f.friends.length === 0 ? <p className="hint dark">No friends yet. Add someone by their username, or tap a name in a match chat.</p> : f.friends.map(fr => (
             <div key={fr.id} className={`friend-row ${fr.online ? 'on' : 'off'} ${talk?.id === fr.id ? 'sel' : ''}`}>
-              <i className="dot" />
+              <span className="fr-av"><img className="av-mini" src={avatarArt(fr.avatar)} alt="" /><i className="dot" /></span>
               <button className="fr-name" onClick={() => { setTalk(fr); sfx.play('page'); }}>
                 <b>{fr.name}</b><small>{fr.status} · Lv {fr.level}</small>
               </button>

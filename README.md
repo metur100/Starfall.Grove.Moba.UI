@@ -22,7 +22,9 @@ empty seats with bots, or open a second browser window and join with the room co
 - **Account**: sign up with a username, email and password, log in with username (or email) and password on any
   device, and reset a forgotten password through the emailed link (`?reset=…` opens the form). The welcome email's link
   (`?confirm=…`) confirms the email; the Profile tab reminds the player until then (with Send again) and can change the
-  username.
+  username. Tapping the picture there opens the picker (`ui/AvatarPicker.tsx`): hero portraits, emblems and the
+  valley's creatures, drawn as paper cut-outs by `game/art/avatar.ts`; some unlock at a level. The picture shows in the
+  top bar, the friend list and the ladder.
 - **Home**: Play (matchmaking for battles and duels, 1v1 to 3v3, with an accept check; a bot offer after 30 s with
   nobody to play; vs Bots for practice; three daily quests), Custom (room codes, invite
   links, a list of public rooms), Heroes (unlock heroes and buy skins with coins), Friends (requests, online status,

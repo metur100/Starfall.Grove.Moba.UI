@@ -5,6 +5,8 @@ import { HERO_ORDER, isHero } from '../game/heroes';
 import { heroBust } from '../game/art/bust';
 import { Coins, RankBadge, XpBar } from '../ui/Bits';
 import { sfx } from '../game/audio';
+import { avatarArt } from '../game/art/avatar';
+import { AvatarPicker } from '../ui/AvatarPicker';
 
 const ago = (iso: string) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -14,6 +16,7 @@ const ago = (iso: string) => {
 /** The player's page: account, level, ranks, stats and recent matches, with logging out and deleting the account. */
 export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile: Profile }) {
   const [msg, setMsg] = useState('');
+  const [picking, setPicking] = useState(false);
   const [deleting, setDeleting] = useState(0);
   const del = async () => {
     if (deleting < 1) { setDeleting(1); return; }
@@ -46,8 +49,10 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
 
   return (
     <div className="profile-page">
+      {picking && <AvatarPicker catalog={catalog} profile={p} onClose={() => setPicking(false)} />}
       <section className="parchment prof-main">
         <div className="prof-account">
+          <button className="prof-av" title="Change your picture" onClick={() => { setPicking(true); sfx.play('page'); }}><img src={avatarArt(p.avatar)} alt="Your picture" /><em>✎</em></button>
           <span><small>Username</small><b>{p.username}</b></span>
           {!renaming && <button className="link rename-link" onClick={() => { setRenaming(true); setNewName(p.username ?? ''); setRenameErr(''); setMsg(''); }}>✎ Change</button>}
           <span><small>Email</small><b>{p.email}</b></span>
