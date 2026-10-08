@@ -14,22 +14,25 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Press **Find match** (bots fill the seats when nobody else is searching), or under **Custom** create a room, fill the
+Press **Find match** (after 30 s with nobody to play, it asks whether to fight bots instead), **vs Bots** for a practice match at once, or under **Custom** create a room, fill the
 empty seats with bots, or open a second browser window and join with the room code.
 
 ## What's in it
 
 - **Account**: sign up with a username, email and password, log in with username (or email) and password on any
   device, and reset a forgotten password through the emailed link (`?reset=…` opens the form).
-- **Home**: Play (matchmaking for battles and duels, 1v1 to 3v3, with an accept check), Custom (room codes, invite
+- **Home**: Play (matchmaking for battles and duels, 1v1 to 3v3, with an accept check; a bot offer after 30 s with
+  nobody to play; vs Bots for practice; three daily quests), Custom (room codes, invite
   links, a list of public rooms), Heroes (unlock heroes and buy skins with coins), Friends (requests, online status,
   private chat), Profile (account, level, ranks, stats, recent matches, log out, delete) and Ladder.
 - **Chat**: in the lobby, hero select (team) and the match (all or team, with quick messages; Enter on a PC). Tap a
   name to add the player as a friend, block or report them. Friends can be invited to a custom room from its lobby.
 - **Hero select**: only heroes you own (or this week's free one), your skin, and your charm.
-- **In a match**: charm button (C) and recall (H), drag an ability onto ✕ to cancel it, kill announcements with
+- **In a match**: map pings for the team (📍, or tap the minimap for "go here"), a surrender vote in battles after five
+  minutes (🏳), charm button (C) and recall (H), drag an ability onto ✕ to cancel it, kill announcements with
   portraits (multikills, streaks, shutdowns, aces), death recap, last-hit marks on minions, the duel Starshard, round
-  summaries, spectating a teammate when knocked out, vibration on phones.
+  summaries, spectating a teammate when knocked out, vibration on phones. On a PC the spells sit in one bar in the
+  bottom middle with the hero's health above it; on touch screens they ring the attack button under the right thumb.
 - **After a match**: the coins it paid line by line, the level bar filling, and the rating change; "Play again" goes
   straight back into the queue.
 - **Animation**: heroes lunge, recoil and squash on attacks, lean into walks and kick up dust, crouch over a rune while
