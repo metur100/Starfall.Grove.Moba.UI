@@ -45,7 +45,7 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
     setSent(err ?? `A new link is on its way to ${p.email}. Check your inbox (and spam).`); sfx.play(err ? 'nope' : 'page');
   };
 
-  const kda = p.games ? `${(p.kills / p.games).toFixed(1)} / ${(p.deaths / p.games).toFixed(1)} / ${(p.assists / p.games).toFixed(1)}` : '—';
+  const kda = p.games ? `${(p.kills / p.games).toFixed(1)}/${(p.deaths / p.games).toFixed(1)}/${(p.assists / p.games).toFixed(1)}` : "—";
   const heroName = (id: string) => catalog.heroes.find(h => h.id === id)?.name ?? id;
 
   // The newest matches that fit beside the stats, so the page never scrolls.
