@@ -3,6 +3,9 @@ import { net } from '../net/connection';
 import type { Catalog, RoomView } from '../net/protocol';
 import { laneLabel } from './Home';
 import { Fit } from '../ui/Fit';
+import { ChatBox } from '../ui/Chat';
+import { social, useSocial } from '../net/social';
+import { useEffect } from 'react';
 
 type Props = { room: RoomView; catalog: Catalog | null; onLeave: () => void };
 
@@ -80,6 +83,11 @@ export function Lobby({ room, catalog, onLeave }: Props) {
           })}
         </div>
 
+        <div className="lobby-social">
+          <section className="parchment lobby-chat"><h4>Room chat</h4><ChatBox mode="room" placeholder="Say hello to the room…" /></section>
+          <InviteFriends />
+        </div>
+
         {err && <p className="err center">{err}</p>}
         <footer className="lobby-foot">
           {host ? (
@@ -96,5 +104,25 @@ export function Lobby({ room, catalog, onLeave }: Props) {
         </footer>
       </div>
     </Fit>
+  );
+}
+
+/** Online friends, with a button to invite each one to this room. */
+function InviteFriends() {
+  const s = useSocial();
+  const [sent, setSent] = useState<Record<string, string>>({});
+  useEffect(() => { void social.refreshFriends(); }, []);
+  const online = (s.friends?.friends ?? []).filter(f => f.online);
+  const invite = async (id: string) => { const e = await net.inviteFriend(id); setSent(x => ({ ...x, [id]: e ?? 'Invited!' })); };
+  return (
+    <section className="parchment lobby-invite">
+      <h4>Invite friends</h4>
+      {online.length === 0 ? <p className="hint dark">None of your friends is online. Share the code or the invite link instead.</p> : online.map(f => (
+        <div key={f.id} className="friend-row on">
+          <i className="dot" /><span className="fr-name"><b>{f.name}</b><small>{f.status}</small></span>
+          {sent[f.id] ? <em className="sent">{sent[f.id]}</em> : <button className="btn small" onClick={() => invite(f.id)}>Invite</button>}
+        </div>
+      ))}
+    </section>
   );
 }

@@ -13,6 +13,7 @@ import type { HeroId } from '../game/types';
 import { Fit } from '../ui/Fit';
 import { Coins, RankBadge } from '../ui/Bits';
 import { SettingsButton } from '../ui/Settings';
+import { ChatBox } from '../ui/Chat';
 import { describeUpgrade } from '../game/upgrades';
 
 type Props = {
@@ -75,6 +76,7 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
     input.onUpgradeKey = () => { if (!duel) setBook(b => !b); };
     input.onLearn = slot => { sfx.play('learn'); buzz(25); setBanner({ text: `Learned ${def.abilities[slot].name}!`, tone: 'good', at: performance.now() }); };
     input.onScoreKey = down => setBoard(down);
+    input.onChatKey = () => setChatOpen(true);
     r.onFx = f => onFx(f);
     // Give the browser a frame to show the loading screen before the bake.
     const id = window.setTimeout(() => { r.prepare(); setReady(true); onLoaded(); }, 60);
@@ -199,6 +201,7 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
   const spectating = rendererRef.current?.spectating ? client.hero(rendererRef.current.spectating) : undefined;
 
   const [leaving, setLeaving] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const picking = duel && state === 'PLAYING' && snap?.rp === 0 && !!me && me.dq.length > 0;
 
   return (
@@ -230,6 +233,7 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
         <canvas ref={miniRef} width={240} height={120} className="minimap card" />
         <div className="hud-buttons">
           <button className="icon-btn card" onClick={() => setBoard(b => !b)} title="Scoreboard (Tab)">☰</button>
+          <button className={`icon-btn card ${chatOpen ? 'on' : ''}`} onClick={() => setChatOpen(o => !o)} title="Chat (Enter)">💬</button>
           <SettingsButton />
           <button className="icon-btn card" onClick={() => setLeaving(true)} title="Leave">⏏</button>
           <span className="ping">{net.ping} ms</span>
@@ -319,6 +323,7 @@ export function MatchView({ state, client, room, result, rewards, catalog, onLoa
         </div>
       )}
       {board && <Scoreboard client={client} onClose={() => setBoard(false)} />}
+      <div className={`match-chat ${chatOpen ? 'open' : ''}`}><ChatBox mode="room" teamChat overlay={!chatOpen} autoFocus={chatOpen && !coarse} placeholder="Message (Enter to send)…" onSent={() => { if (!coarse) setChatOpen(false); }} /></div>
 
       {state === 'LOADING' && (
         <div className="overlay loading">

@@ -33,8 +33,16 @@ export type Profile = {
   equipped: Record<string, string>; charm: string; rating: Record<MatchType, number>; rank: Record<MatchType, string>;
   games: number; wins: number; kills: number; deaths: number; assists: number; heroStats: Record<string, [number, number]>;
   firstWinReady: boolean; rotation: string[]; recent: MatchRecord[];
+  /** The account: null until the player signs up. requests: friend requests waiting for an answer. */
+  username: string | null; email: string | null; requests: number;
 };
 export type HelloResult = { ok: boolean; error: string | null; profile: Profile | null };
+export type AuthResult = { error: string | null; profile: Profile | null; token: string | null };
+export type Friend = { id: string; name: string; level: number; rank: string; online: boolean; status: string };
+export type FriendsList = { friends: Friend[]; requests: Friend[]; blocked: Friend[] };
+/** scope: "all" or "team" in a room or match, "friend" for a private message (to: the other player's id). */
+export type ChatMsg = { id: string; scope: 'all' | 'team' | 'friend'; fromId: string; from: string; text: string; at: number; team: number; to: string | null };
+export type Invite = { fromId: string; from: string; code: string; type: MatchType; mode: number };
 export type ShopResult = { error: string | null; profile: Profile | null };
 export type QueueStatus = { state: 'idle' | 'searching' | 'found'; type: MatchType | null; mode: number; waited: number; searching: number; botsIn: number };
 export type MatchFound = { id: string; type: MatchType; mode: number; accepted: number; total: number; timeLeft: number; youAccepted: boolean; bots: number };

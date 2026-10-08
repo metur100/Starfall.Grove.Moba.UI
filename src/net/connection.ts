@@ -1,12 +1,12 @@
 import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr';
 import type {
-  Catalog, HelloResult, JoinResult, LeaderRow, MatchEnd, MatchFound, MatchInit, MatchType, Me, Profile, QueueStatus, Rewards, RoomListing,
-  RoomView, ShopResult, Snapshot,
+  AuthResult, Catalog, ChatMsg, FriendsList, HelloResult, Invite, JoinResult, LeaderRow, MatchEnd, MatchFound, MatchInit, MatchType, Me, Profile,
+  QueueStatus, Rewards, RoomListing, RoomView, ShopResult, Snapshot,
 } from './protocol';
 
 // The one connection to the Mini Rift server. It reconnects by itself after a drop and then takes the player's seat
-// back. The server knows a player by a secret token kept in this browser: it is their seat in a room and their
-// profile (coins, heroes, skins, level). The token can be copied to another device to carry the profile over.
+// back. The server knows a device by a secret token kept in this browser: its seat in a room, and the account it is
+// signed in to (signing in gives the device a new token, logging out drops it).
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:5080';
 
@@ -21,6 +21,11 @@ type Events = {
   queue: QueueStatus;
   matchFound: MatchFound;
   rewards: Rewards;
+  /** The profile went away (logged out, deleted): back to the sign-in screen. */
+  signedOut: null;
+  chat: ChatMsg;
+  friends: FriendsList;
+  invite: Invite;
 };
 
 const store = {
@@ -34,8 +39,6 @@ function makeToken() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** An account key as people type or paste it: 32 hex digits, maybe split up with spaces or dashes. */
-export function cleanKey(v: string) { return v.toLowerCase().replace(/[^0-9a-f]/g, ''); }
 
 class Net {
   private conn: HubConnection | null = null;
@@ -69,6 +72,15 @@ class Net {
   private emit<K extends keyof Events>(event: K, v: Events[K]) { (this.listeners.get(event) as Set<(v: Events[K]) => void> | undefined)?.forEach(fn => fn(v)); }
   private setStatus(s: NetStatus) { this.status = s; this.emit('status', s); }
   private setProfile(p: Profile | null) { if (!p) return; this.profile = p; if (p.name) this.name = p.name; this.emit('profile', p); }
+  /** Starts this device over with a new token and no profile (after logging out or deleting the profile). */
+  private async fresh() {
+    this.lastRoom = null;
+    this.token = makeToken(); store.set('minirift-token', this.token);
+    this.profile = null;
+    this.emit('signedOut', null);
+    await this.hello();
+  }
+  private useToken(token: string | null) { if (token) { this.token = token; store.set('minirift-token', token); } }
 
   async connect(): Promise<boolean> {
     if (this.conn && this.conn.state === HubConnectionState.Connected) return true;
@@ -88,6 +100,9 @@ class Net {
       conn.on('queue', (v: QueueStatus) => { this.queue = v; this.emit('queue', v); });
       conn.on('matchFound', (v: MatchFound) => this.emit('matchFound', v));
       conn.on('rewards', (v: Rewards) => this.emit('rewards', v));
+      conn.on('chat', (v: ChatMsg) => this.emit('chat', v));
+      conn.on('friends', (v: FriendsList) => this.emit('friends', v));
+      conn.on('invite', (v: Invite) => this.emit('invite', v));
       conn.onreconnecting(() => this.setStatus('reconnecting'));
       conn.onreconnected(async () => {
         await this.hello();
@@ -111,11 +126,11 @@ class Net {
     }
   }
 
-  /** Ties this connection to the player's profile (the server makes one on the first visit). */
+  /** Ties this connection to the device's profile, if it has one (none: the player signs up or logs in). */
   private async hello() {
     try {
       const r = await this.conn!.invoke<HelloResult>('Hello', this.token, this.name);
-      if (r.ok) this.setProfile(r.profile);
+      if (r.ok) { if (r.profile) this.setProfile(r.profile); else { this.profile = null; this.emit('signedOut', null); } }
       return r;
     } catch { return null; }
   }
@@ -149,23 +164,49 @@ class Net {
     } catch (e) { return e instanceof Error ? e.message : 'Something went wrong.'; }
   }
 
+  // ───────────────────────────── accounts
+
+  private async auth(method: string, ...args: unknown[]): Promise<string | null> {
+    try {
+      const r = await this.call<AuthResult>(method, ...args);
+      if (r.error) return r.error;
+      this.useToken(r.token);
+      this.setProfile(r.profile);
+      return null;
+    } catch (e) { return e instanceof Error ? e.message : 'Something went wrong.'; }
+  }
+  register(username: string, email: string, password: string) { return this.auth('Register', username, email, password); }
+  login(username: string, password: string) { return this.auth('Login', username, password); }
+  resetPassword(code: string, password: string) { return this.auth('ResetPassword', code, password); }
+  forgotPassword(email: string) { return this.act('ForgotPassword', email); }
+  async logout() { try { await this.call('Logout'); } catch { /* signed out on this device anyway */ } await this.fresh(); }
+
+  // ───────────────────────────── friends and chat
+
+  async friends(): Promise<FriendsList | null> { try { return await this.call<FriendsList | null>('Friends'); } catch { return null; } }
+  addFriend(username: string) { return this.act('AddFriend', username); }
+  answerFriend(id: string, accept: boolean) { return this.act('AnswerFriend', id, accept); }
+  removeFriend(id: string) { return this.act('RemoveFriend', id); }
+  block(id: string, block: boolean) { return this.act('Block', id, block); }
+  report(id: string, reason: string, message?: string) { return this.act('Report', id, reason, message ?? null); }
+  chat(scope: 'all' | 'team' | 'friend', text: string, to?: string) { return this.act('Chat', scope, text, to ?? null); }
+  inviteFriend(id: string) { return this.act('InviteFriend', id); }
+
   // ───────────────────────────── profile and shop
 
-  setName(name: string) { this.name = name; return this.shop('SetName', name); }
   buyHero(hero: string) { return this.shop('BuyHero', hero); }
   buySkin(skin: string) { return this.shop('BuySkin', skin); }
   equipSkin(hero: string, skin: string | null) { return this.shop('EquipSkin', hero, skin ?? ''); }
   setCharm(charm: string) { return this.shop('SetCharm', charm); }
   async leaderboard(type: MatchType): Promise<LeaderRow[]> { try { return await this.call<LeaderRow[]>('Leaderboard', type); } catch { return []; } }
-  /** Switches this browser to another account key (from another device). */
-  async useKey(key: string): Promise<string | null> {
-    const k = cleanKey(key);
-    if (k.length !== 32) return 'An account key has 32 letters and digits.';
-    if (k === this.token) return null;
-    await this.leave();
-    this.token = k; store.set('minirift-token', k);
-    const r = await this.hello();
-    return r?.ok ? null : r?.error ?? 'Could not reach the server.';
+
+  /** Deletes the account and profile on the server for good, then starts this device over. */
+  async deleteProfile(): Promise<string | null> {
+    const e = await this.act('DeleteProfile');
+    if (e) return e;
+    store.set('minirift-name', null);
+    await this.fresh();
+    return null;
   }
 
   // ───────────────────────────── matchmaking

@@ -28,6 +28,7 @@ export class Input {
   onUpgradeKey: () => void = () => {};
   onLearn: (slot: number) => void = () => {};
   onScoreKey: (down: boolean) => void = () => {};
+  onChatKey: () => void = () => {};
   /** The last direction the player walked in, for a tapped Flash. */
   private lastMove = { x: 0, y: 0 };
 
@@ -50,6 +51,7 @@ export class Input {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       if (k === 'tab') { e.preventDefault(); this.onScoreKey(true); return; }
+      if (k === 'enter') { e.preventDefault(); this.keys.clear(); this.onChatKey(); return; }
       if (k === 'b' || k === 'u') { this.onUpgradeKey(); return; }
       if (k === ' ') e.preventDefault();
       const atMouse = () => this.mouse ? this.renderer.screenToWorld(this.mouse.x, this.mouse.y) : undefined;

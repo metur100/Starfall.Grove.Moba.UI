@@ -23,8 +23,18 @@ export const prefs = {
   },
 };
 
-/** A short buzz on phones that can (Android); silently nothing elsewhere. */
+/** The Mini Rift app (iOS and Android) offers real haptics to the page; in a browser there is only `vibrate`. */
+type AppBridge = { platform?: string; haptic?: (kind: 'light' | 'medium' | 'heavy' | 'success' | 'error') => void };
+const app = () => (window as unknown as { MiniRiftApp?: AppBridge }).MiniRiftApp;
+
+/** A short buzz: through the app's haptics when inside it, else on phones that can vibrate (Android browsers). */
 export function buzz(pattern: number | number[]) {
   if (!settings.haptics) return;
+  const a = app();
+  if (a?.haptic) {
+    const total = Array.isArray(pattern) ? pattern.reduce((s, v, i) => s + (i % 2 ? 0 : v), 0) : pattern;
+    a.haptic(Array.isArray(pattern) && pattern.length >= 5 ? 'success' : total >= 150 ? 'heavy' : total >= 50 ? 'medium' : 'light');
+    return;
+  }
   try { navigator.vibrate?.(pattern); } catch { /* not allowed */ }
 }

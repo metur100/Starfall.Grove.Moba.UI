@@ -10,6 +10,7 @@ import { TIER_COLOR } from '../game/skins';
 import { sfx } from '../game/audio';
 import { buzz } from '../game/settings';
 import { Fit } from '../ui/Fit';
+import { ChatBox } from '../ui/Chat';
 import type { HeroId } from '../game/types';
 
 type Props = { room: RoomView; catalog: Catalog; profile: Profile | null };
@@ -29,6 +30,13 @@ export function HeroSelect({ room, catalog, profile }: Props) {
   const ownedSkins = catalog.shop.skins.filter(s => s.hero === sel && profile?.skins.includes(s.id));
 
   useEffect(() => { if (!me.locked && playable(sel)) void net.pickHero(sel, false); }, [sel, me.locked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A teammate locked in the hero you were looking at: move on to the next one you can play.
+  const takenKey = [...takenByTeam].join();
+  useEffect(() => {
+    if (me.locked || !takenByTeam.has(sel)) return;
+    const next = HERO_ORDER.find(h => playable(h) && !takenByTeam.has(h));
+    if (next) { setSel(next); setErr(`${catalog.heroes.find(h => h.id === sel)?.name} was taken by a teammate.`); }
+  }, [takenKey, sel, me.locked]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { sfx.play('discover'); buzz(40); }, []);
   const lock = async () => { const e = await net.pickHero(sel, true); setErr(e || ''); if (!e) { sfx.play('learn'); buzz(30); } };
   const charm = async (id: string) => { const e = await net.setCharm(id); setErr(e || ''); sfx.play(e ? 'nope' : 'ui'); };
@@ -39,6 +47,7 @@ export function HeroSelect({ room, catalog, profile }: Props) {
       <div className="select">
         <h2 className="select-title">{room.matchmade ? 'Match found — choose your hero' : 'Choose your hero'}</h2>
         <div className="select-body">
+          <div className="select-left">
           <div className="hero-grid">
             {HERO_ORDER.map(id => {
               const h = catalog.heroes.find(x => x.id === id)!;
@@ -54,6 +63,9 @@ export function HeroSelect({ room, catalog, profile }: Props) {
                 </button>
               );
             })}
+          </div>
+
+          <div className="select-chat"><ChatBox mode="room" teamChat placeholder="Plan with your team…" /></div>
           </div>
 
           <article className="hero-detail parchment">

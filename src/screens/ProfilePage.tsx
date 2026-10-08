@@ -11,25 +11,26 @@ const ago = (iso: string) => {
   return s < 90 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
 };
 
-/** The player's page: name, level, ranks, stats, recent matches, and the account key that carries the profile to
- *  another device. */
+/** The player's page: account, level, ranks, stats and recent matches, with logging out and deleting the account. */
 export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile: Profile }) {
-  const [name, setName] = useState(p.name);
   const [msg, setMsg] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [key, setKey] = useState('');
-  const saveName = async () => { const e = await net.setName(name.trim()); setMsg(e ?? 'Name saved.'); sfx.play(e ? 'nope' : 'learn'); };
-  const copyKey = async () => { try { await navigator.clipboard.writeText(net.token); setMsg('Account key copied.'); } catch { setShowKey(true); } };
-  const useKey = async () => { const e = await net.useKey(key); setMsg(e ?? 'Switched account.'); setKey(''); sfx.play(e ? 'nope' : 'questDone'); };
+  const [deleting, setDeleting] = useState(0);
+  const del = async () => {
+    if (deleting < 1) { setDeleting(1); return; }
+    const e = await net.deleteProfile();
+    setDeleting(0); setMsg(e ?? 'Your profile was deleted. You start fresh.'); sfx.play(e ? 'nope' : 'page');
+  };
+
   const kda = p.games ? `${(p.kills / p.games).toFixed(1)} / ${(p.deaths / p.games).toFixed(1)} / ${(p.assists / p.games).toFixed(1)}` : '—';
   const heroName = (id: string) => catalog.heroes.find(h => h.id === id)?.name ?? id;
 
   return (
     <div className="profile-page">
       <section className="parchment prof-main">
-        <div className="prof-name">
-          <label className="field compact"><span>Name</span><input value={name} maxLength={16} onChange={e => setName(e.target.value)} /></label>
-          <button className="btn small" disabled={!name.trim() || name.trim() === p.name} onClick={saveName}>Save</button>
+        <div className="prof-account">
+          <span><small>Username</small><b>{p.username}</b></span>
+          <span><small>Email</small><b>{p.email}</b></span>
+          <button className="btn small" onClick={() => { sfx.play('page'); void net.logout(); }}>Log out</button>
         </div>
         <div className="prof-level"><XpBar level={p.level} xp={p.xp} next={p.xpNext} /><small>{p.xp} / {p.xpNext} XP · next level pays <Coins value={(p.level + 1) % 5 === 0 ? 400 : 100} /></small></div>
         <div className="prof-ranks">
@@ -43,17 +44,10 @@ export function ProfilePage({ catalog, profile: p }: { catalog: Catalog; profile
           <span><b>{p.heroes.length}/{HERO_ORDER.length}</b><small>Heroes</small></span>
           <span><b>{p.skins.length}/{catalog.shop.skins.length}</b><small>Skins</small></span>
         </div>
-        <div className="prof-key">
-          <small>Account key — keeps your profile on another device. Keep it secret.</small>
-          <div className="key-row">
-            <code>{showKey ? net.token.match(/.{1,8}/g)!.join('-') : '••••••••-••••••••-••••••••-••••••••'}</code>
-            <button className="link" onClick={() => setShowKey(s => !s)}>{showKey ? 'Hide' : 'Show'}</button>
-            <button className="link" onClick={copyKey}>Copy</button>
-          </div>
-          <div className="key-row">
-            <input placeholder="Paste a key from another device" value={key} onChange={e => setKey(e.target.value)} />
-            <button className="btn small" disabled={key.replace(/[^0-9a-f]/gi, '').length !== 32} onClick={useKey}>Use</button>
-          </div>
+        <p className="hint dark">Play on any device: log in there with your username and password. Forgot it? Log out and use “Forgot password?”.</p>
+        <div className="prof-delete">
+          <button className={`link ${deleting ? 'danger-link' : ''}`} onClick={del}>{deleting ? 'Tap again: delete my account, coins, heroes, skins and friends for good' : 'Delete my profile'}</button>
+          {deleting > 0 && <button className="link" onClick={() => setDeleting(0)}>Keep it</button>}
         </div>
         {msg && <p className="ok-msg">{msg}</p>}
       </section>

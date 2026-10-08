@@ -9,6 +9,8 @@ import { Coins, RankBadge, XpBar } from '../ui/Bits';
 import { SettingsButton } from '../ui/Settings';
 import { Collection } from './Collection';
 import { ProfilePage } from './ProfilePage';
+import { Friends } from './Friends';
+import { social, useSocial } from '../net/social';
 import { sfx } from '../game/audio';
 import type { HeroId } from '../game/types';
 
@@ -16,11 +18,12 @@ import type { HeroId } from '../game/types';
 export const laneLabel = (m: MapInfo) => m.type === 'duel' ? 'Arena' : m.lanes === 1 ? '1 lane' : `${m.lanes} lanes`;
 export const fmtWait = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
-type Tab = 'play' | 'custom' | 'heroes' | 'profile' | 'ladder';
+type Tab = 'play' | 'custom' | 'heroes' | 'friends' | 'profile' | 'ladder';
 const TABS: Array<{ id: Tab; icon: string; label: string }> = [
   { id: 'play', icon: '⚔', label: 'Play' },
   { id: 'custom', icon: '✦', label: 'Custom' },
   { id: 'heroes', icon: '♛', label: 'Heroes' },
+  { id: 'friends', icon: '❤', label: 'Friends' },
   { id: 'profile', icon: '☺', label: 'Profile' },
   { id: 'ladder', icon: '☰', label: 'Ladder' },
 ];
@@ -31,6 +34,8 @@ export function Home({ status, catalog, profile, queue, initialCode, onRetry }: 
   const [tab, setTab] = useState<Tab>(initialCode ? 'custom' : 'play');
   const online = status === 'connected';
   const go = (t: Tab) => { setTab(t); sfx.play('page'); };
+  useSocial();
+  const badge = (t: Tab) => t === 'friends' ? (profile?.requests ?? 0) + social.unreadTotal() : 0;
 
   return (
     <Fit className="screen">
@@ -54,6 +59,7 @@ export function Home({ status, catalog, profile, queue, initialCode, onRetry }: 
             {TABS.map(t => (
               <button key={t.id} className={`tab ${tab === t.id ? 'on' : ''}`} onClick={() => go(t.id)}>
                 <i>{t.icon}</i><span>{t.label}</span>
+                {badge(t.id) > 0 && <em className="badge">{badge(t.id)}</em>}
               </button>
             ))}
             <div className={`net-status ${status}`}>
@@ -64,6 +70,7 @@ export function Home({ status, catalog, profile, queue, initialCode, onRetry }: 
             {tab === 'play' && <PlayTab catalog={catalog} profile={profile} queue={queue} online={online} />}
             {tab === 'custom' && <CustomTab catalog={catalog} initialCode={initialCode} online={online} />}
             {tab === 'heroes' && (catalog && profile ? <Collection catalog={catalog} profile={profile} /> : <Waiting online={online} />)}
+            {tab === 'friends' && <Friends online={online} />}
             {tab === 'profile' && (catalog && profile ? <ProfilePage catalog={catalog} profile={profile} /> : <Waiting online={online} />)}
             {tab === 'ladder' && <LadderTab online={online} />}
           </section>
@@ -89,16 +96,12 @@ function PlayTab({ catalog, profile, queue, online }: { catalog: Catalog | null;
   const [type, setType] = useState<MatchType>(() => (localStorage.getItem('minirift-type') as MatchType) || 'battle');
   const [mode, setMode] = useState(() => Number(localStorage.getItem('minirift-mode')) || 3);
   const [err, setErr] = useState('');
-  const [name, setName] = useState(profile?.name ?? '');
   useEffect(() => { try { localStorage.setItem('minirift-type', type); localStorage.setItem('minirift-mode', String(mode)); } catch { /* private */ } }, [type, mode]);
-  useEffect(() => { if (profile) setName(profile.name); }, [profile?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   const hero = profile ? favourite(profile) : 'mira';
   const searching = queue.state !== 'idle';
-  const newcomer = profile && profile.games === 0 && profile.name === 'Wanderer';
 
   const find = async () => {
     setErr('');
-    if (newcomer && name.trim() && name.trim() !== profile.name) await net.setName(name.trim());
     const e = await net.findMatch(type, mode);
     if (e) { setErr(e); sfx.play('nope'); } else sfx.play('ui');
   };
@@ -120,9 +123,7 @@ function PlayTab({ catalog, profile, queue, online }: { catalog: Catalog | null;
         </div>
         <div className="seg big">{[1, 2, 3].map(m => <button key={m} disabled={searching} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m}v{m}</button>)}</div>
         {profile && <div className="play-rank"><RankBadge rank={profile.rank[type]} rating={profile.rating[type]} /><small>{type === 'duel' ? 'Duel' : 'Battle'} rating · goes up when you win matchmade games</small></div>}
-        {newcomer && (
-          <label className="field compact"><span>Your name</span><input value={name} maxLength={16} placeholder="Wanderer" onChange={e => setName(e.target.value)} /></label>
-        )}
+
         {searching ? (
           <button className="btn danger big find" onClick={() => void net.cancelMatch()}>
             <span className="spinner" /> {queue.state === 'found' ? 'Match found!' : `Searching ${fmtWait(queue.waited)}`} <small>Cancel</small>

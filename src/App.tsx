@@ -9,6 +9,8 @@ import { Lobby } from './screens/Lobby';
 import { HeroSelect } from './screens/HeroSelect';
 import { MatchView } from './screens/MatchView';
 import { MatchFoundDialog, QueuePill } from './ui/Queue';
+import { Auth } from './screens/Auth';
+import { social, useSocial } from './net/social';
 
 const MATCH_STATES: GameState[] = ['LOADING', 'MATCH_START', 'PLAYING', 'VICTORY', 'DEFEAT'];
 
@@ -39,6 +41,10 @@ export default function App() {
   const [queue, setQueue] = useState<QueueStatus>(net.queue);
   const [found, setFound] = useState<MatchFound | null>(null);
   const initialCode = new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '';
+  // A password reset link from the email: ?reset=<code>.
+  const [resetCode, setResetCode] = useState(() => new URLSearchParams(location.search).get('reset') ?? '');
+  const endReset = () => { setResetCode(''); history.replaceState(null, '', location.pathname); };
+  const s = useSocial();
 
   /** Which screen a room's phase belongs on. */
   const follow = useCallback((r: RoomView) => {
@@ -82,6 +88,7 @@ export default function App() {
       }),
       net.on('rewards', setRewards),
       net.on('profile', setProfile),
+      net.on('signedOut', () => { setProfile(null); clientRef.current = null; setClient(null); setRoom(null); go('MAIN_MENU'); }),
       net.on('queue', q => { setQueue(q); if (q.state !== 'found') setFound(null); }),
       net.on('matchFound', setFound),
     ];
@@ -107,9 +114,20 @@ export default function App() {
   const playAgain = async (type: MatchType, mode: number) => { await leave(); await net.findMatch(type, mode); };
 
   const inMatch = client && catalog && (MATCH_STATES.includes(state) || (state === 'DISCONNECTED' && clientRef.current));
+  // Playing needs an account: until this device is signed in, the menu is the sign-in screen.
+  const signedIn = !!profile?.username && !resetCode;
+  const joinInvite = async () => { const i = s.invite; social.clearInvite(); if (i) await net.joinRoom(i.code, profile?.name ?? ''); };
   return (
     <div className="app">
-      {state === 'MAIN_MENU' && <Home status={status} catalog={catalog} profile={profile} queue={queue} initialCode={initialCode} onRetry={retry} />}
+      {state === 'MAIN_MENU' && !signedIn && <Auth status={status} guest={profile} resetCode={resetCode} onRetry={retry} onResetDone={endReset} />}
+      {state === 'MAIN_MENU' && signedIn && <Home status={status} catalog={catalog} profile={profile} queue={queue} initialCode={initialCode} onRetry={retry} />}
+      {s.invite && signedIn && (state === 'MAIN_MENU' || state === 'LOBBY') && (
+        <div className="invite-toast card">
+          <span><b>{s.invite.from}</b> invites you to a {s.invite.type === 'duel' ? 'duel' : 'battle'} ({s.invite.mode}v{s.invite.mode})</span>
+          <button className="btn small primary" onClick={joinInvite}>Join</button>
+          <button className="link" onClick={() => social.clearInvite()}>Later</button>
+        </div>
+      )}
       {state === 'LOBBY' && room && <Lobby room={room} catalog={catalog} onLeave={leave} />}
       {state === 'HERO_SELECT' && room && catalog && <HeroSelect room={room} catalog={catalog} profile={profile} />}
       {inMatch && (

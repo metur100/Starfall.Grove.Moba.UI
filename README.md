@@ -19,9 +19,13 @@ empty seats with bots, or open a second browser window and join with the room co
 
 ## What's in it
 
+- **Account**: sign up with a username, email and password, log in with username (or email) and password on any
+  device, and reset a forgotten password through the emailed link (`?reset=…` opens the form).
 - **Home**: Play (matchmaking for battles and duels, 1v1 to 3v3, with an accept check), Custom (room codes, invite
-  links, a list of public rooms), Heroes (unlock heroes and buy skins with coins), Profile (level, ranks, stats, recent
-  matches, account key for another device) and Ladder.
+  links, a list of public rooms), Heroes (unlock heroes and buy skins with coins), Friends (requests, online status,
+  private chat), Profile (account, level, ranks, stats, recent matches, log out, delete) and Ladder.
+- **Chat**: in the lobby, hero select (team) and the match (all or team, with quick messages; Enter on a PC). Tap a
+  name to add the player as a friend, block or report them. Friends can be invited to a custom room from its lobby.
 - **Hero select**: only heroes you own (or this week's free one), your skin, and your charm.
 - **In a match**: charm button (C) and recall (H), drag an ability onto ✕ to cancel it, kill announcements with
   portraits (multikills, streaks, shutdowns, aces), death recap, last-hit marks on minions, the duel Starshard, round

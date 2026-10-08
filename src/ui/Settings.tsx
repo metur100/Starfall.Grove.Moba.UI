@@ -26,7 +26,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           {help ? <HowTo /> : (
             <div className="settings-rows">
               <div className="setting"><span>Sound</span><div className="seg">{[false, true].map(m => <button key={String(m)} className={sfx.isMuted() === m ? 'on' : ''} onClick={() => set(() => sfx.setMuted(m))}>{m ? 'Off' : 'On'}</button>)}</div></div>
-              <div className="setting"><span>Vibration <small>(Android)</small></span><div className="seg">{[true, false].map(v => <button key={String(v)} className={prefs.haptics === v ? 'on' : ''} onClick={() => set(() => { prefs.haptics = v; if (v) buzz(30); })}>{v ? 'On' : 'Off'}</button>)}</div></div>
+              <div className="setting"><span>Vibration</span><div className="seg">{[true, false].map(v => <button key={String(v)} className={prefs.haptics === v ? 'on' : ''} onClick={() => set(() => { prefs.haptics = v; if (v) buzz(30); })}>{v ? 'On' : 'Off'}</button>)}</div></div>
               <div className="setting"><span>Graphics <small>(next match)</small></span><div className="seg">{(['auto', 'high', 'low'] as Quality[]).map(q => <button key={q} className={prefs.quality === q ? 'on' : ''} onClick={() => set(() => { prefs.quality = q; })}>{q === 'auto' ? 'Auto' : q === 'high' ? 'Sharp' : 'Fast'}</button>)}</div></div>
               <button className="btn small" onClick={() => setHelp(true)}>How to play</button>
             </div>
